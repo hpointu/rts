@@ -7,24 +7,8 @@
 (defonce state (atom {}))
 
 (def SIZE 35)
-
-(defn ->world [width height]
-  (let [full (vec (for [_ (range width)] :w))
-        line (-> [:w]
-                 (into (for [_ (range (- width 2))] :g))
-                 (conj :w))]
-    (-> [full]
-        (into (for [_ (range (- height 2))] line))
-        (conj full)))) 
-
 (defn init-state []
-  {:world (->world 15 10)})
-
-(defn world-width [world]
-  (count (get world 0)))
-
-(defn world-height [world]
-  (count world))
+  {:world (core/->world 15 10)})
 
 (defn to-screen [[x y]]
   [(* SIZE x) (* SIZE y)])
@@ -35,12 +19,8 @@
 (defn get-canvas []
   (js/document.getElementById "game"))
 
-(defn obstacle? [world x y]
-  (let [obstacles #{:w}]
-    (some? (obstacles (get-in world [y x])))))
-
 (defn draw-tile! [ctx world x y size hover?]
-  (let [tile-color (if (obstacle? world x y) "gray" (if hover? "green" "#222"))
+  (let [tile-color (if (core/obstacle? world x y) "gray" (if hover? "green" "#222"))
         [x y] (to-screen [x y])]
     (g/render-item! ctx {:type :rect :x (+ 1 x) :y (+ 1 y)
                          :w (- size 2) :h (- size 2) :fill tile-color})
@@ -48,8 +28,8 @@
                          :w (- size 4) :h (- size 4) :fill "black"})))
 
 (defn draw-map! [ctx {:keys [world hover] :as state}]
-  (doseq [x (range (world-width world))
-          y (range (world-height world))]
+  (doseq [x (range (core/world-width world))
+          y (range (core/world-height world))]
     (draw-tile! ctx world x y SIZE (= hover [x y])))) 
 
 (defn update-state [state dt] state
