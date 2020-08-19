@@ -23,7 +23,7 @@
     (.closePath)))
 
 
-(defmethod render-item! :line render-circle
+(defmethod render-item! :line render-line
   [ctx {:keys [x1 y1 x2 y2 color] :as item}]
   (doto ctx
     (.beginPath)
