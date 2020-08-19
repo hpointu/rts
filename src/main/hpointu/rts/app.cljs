@@ -21,7 +21,7 @@
 
 (def SIZE 35)
 (defn init-state []
-  {:world (core/->world 112 112)
+  {:world (core/->world 74 74)
    :world-updates []})
 
 (defn redraw-world [{:keys [world] :as state}]
@@ -93,7 +93,7 @@
           :when (visible? state x y)]
     (draw-tile! (context "game") world x y SIZE (= hover [x y])))
   (doseq [[x y] world-updates]
-    (let [size 2
+    (let [size 3
           color (if (core/obstacle? world x y) "gray" "#111")
           [x y] (to-screen [x y] size)]
       (g/render-item! (context "minimap") {:type :rect :x x :y y :w size :h size :fill color})))
@@ -115,14 +115,14 @@
                  :background-color "black"}}
     "RTS Demo"]
    [:div {:style {:display "flex"}}
-     [:div {:style {:width 224
+     [:div {:style {:width 223
                     :margin-right 5
                     :display "flex"
                     :flex-flow "column wrap"}}
       [:canvas {:id "minimap"
-                :width 224
-                :height 224
-                :style {:background-color "#111" :width 224 :height 224}}]
+                :width 223
+                :height 223
+                :style {:background-color "#111" :width 223 :height 223}}]
       [:div {:style {:background-color "black"
                      :flex-grow 1
                      :padding 15 :margin-top 5}}
