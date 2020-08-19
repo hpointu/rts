@@ -16,6 +16,9 @@
         (into (for [_ (range (- height 2))] line))
         (conj full)))) 
 
+(defn world-cell [world x y]
+  (get-in world [y x]))
+
 (defn obstacle? [world x y]
   (let [obstacles #{:w}]
     (some? (obstacles (get-in world [y x])))))

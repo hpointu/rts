@@ -10,15 +10,31 @@
 (def current-time (atom 0))
 (defonce state (r/atom {}))
 
+;; hack for FPS counter
+(defonce frame-counter (atom 0))
+(defonce fps (r/atom 0))
+
 (defn get-debug-content []
-  (with-out-str (cljs.pprint/pprint (dissoc @state :world))))
+  (str "FPS: " @fps "\n"
+    (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
+                                          (dissoc :world-updates))))))
 
 (def SIZE 35)
 (defn init-state []
-  {:world (core/->world 15 10)})
+  {:world (core/->world 112 112)
+   :world-updates []})
 
-(defn to-screen [[x y]]
-  [(* SIZE x) (* SIZE y)])
+(defn redraw-world [{:keys [world] :as state}]
+  (let [elems (for [x (range (core/world-width world))
+                    y (range (core/world-height world))]
+                [x y])]
+    (assoc state :world-updates elems)))
+
+(defn to-screen
+  ([coords]
+   (to-screen coords SIZE))
+  ([[x y] size]
+   [(* size x) (* size y)]))
 
 (defn to-world [[x y]]
   [(/ x SIZE) (/ y SIZE)])
@@ -29,6 +45,13 @@
 (defn get-minimap-canvas []
   (js/document.getElementById "minimap"))
 
+(defn context [canvas-name]
+  (.getContext (js/document.getElementById canvas-name) "2d"))
+
+(defn visible? [state x y]
+  (and (< x 18)
+       (< y 14)))
+
 (defn draw-tile! [ctx world x y size hover?]
   (let [tile-color (if (core/obstacle? world x y) "gray" (if hover? "green" "#222"))
         [x y] (to-screen [x y])]
@@ -37,29 +60,52 @@
     (g/render-item! ctx {:type :rect :x (+ 2 x) :y (+ 2 y)
                          :w (- size 4) :h (- size 4) :fill "black"})))
 
-(defn draw-map! [ctx {:keys [world hover] :as state}]
+(defn draw-minimap! [ctx {:keys [world] :as state}]
   (doseq [x (range (core/world-width world))
           y (range (core/world-height world))]
-    (draw-tile! ctx world x y SIZE (= hover [x y])))) 
+    (let [size 2
+          color (if (core/obstacle? world x y) "gray" "#111")
+          [x y] (to-screen [x y] size)]
+      (g/render-item! ctx {:type :rect :x x :y y :w size :h size :fill color}))))
+
+(defn update-hover [{:keys [hover world] :as state} x y]
+  (let [new-hover (when (core/in-world? world x y) [x y])]
+    (-> state
+        (assoc :hover new-hover)
+        (update :world-updates into (keep identity [new-hover hover])))))
+
+(defn handle-input [{:keys [hover] :as state}]
+  (if (and hover (io/key-pressed? "KeyW"))
+    (let [[x y] hover]
+      (assoc-in state [:world y x] :w))
+    state))
+   
 
 (defn update-state [{:keys [world] :as state} dt] state
   (let [canvas (get-game-canvas)
         [x y] (map int (to-world (io/mouse-pos canvas)))]
-    (assoc state :hover (when (core/in-world? world x y) [x y]))))
+    (-> state
+        (update-hover x y)
+        (handle-input))))
  
-(defn draw! [state]
-  (let [canvas (get-game-canvas)
-        ctx (. canvas getContext "2d")]
-    (.clearRect ctx 0 0 (.-width canvas) (.-height canvas))
-    (draw-map! ctx state)))
+(defn draw! [{:keys [world-updates world hover] :as state}]
+  (doseq [[x y] world-updates
+          :when (visible? state x y)]
+    (draw-tile! (context "game") world x y SIZE (= hover [x y])))
+  (doseq [[x y] world-updates]
+    (let [size 2
+          color (if (core/obstacle? world x y) "gray" "#111")
+          [x y] (to-screen [x y] size)]
+      (g/render-item! (context "minimap") {:type :rect :x x :y y :w size :h size :fill color})))
+  (assoc state :world-updates []))
 
 (defn tick! []
   (let [t (.now js/Date)
         dt (- t @current-time)
-        new-state (update-state @state dt)]
+        new-state (draw! (update-state @state dt))]
     (do (reset! current-time t)
-        (draw! new-state)
-        (reset! state new-state))))
+        (reset! state new-state)
+        (swap! frame-counter inc))))
 
 (defn rts-app [props]
   [:div {:style {:color "white"}}
@@ -69,12 +115,14 @@
                  :background-color "black"}}
     "RTS Demo"]
    [:div {:style {:display "flex"}}
-     [:div {:style {:width 235
+     [:div {:style {:width 224
                     :margin-right 5
                     :display "flex"
                     :flex-flow "column wrap"}}
       [:canvas {:id "minimap"
-                :style {:background-color "#111" :width 235 :height 235}}]
+                :width 224
+                :height 224
+                :style {:background-color "#111" :width 224 :height 224}}]
       [:div {:style {:background-color "black"
                      :flex-grow 1
                      :padding 15 :margin-top 5}}
@@ -83,10 +131,10 @@
         [:li "Minimap"]
         [:li "Camera movement"]
         [:li "Mouse mode"]]]]
-     [:canvas {:id "game" :width 600 :height 480
+     [:canvas {:id "game" :width 611 :height 480
                :onContextMenu #(.preventDefault %)
                :style {:background-color "black"
-                       :min-width 600
+                       :min-width 611
                        :margin 0}}]]
    [:pre {:style {:background-color "black"
                   :margin-top 5
@@ -94,17 +142,27 @@
                   :width 820}}
     (get-debug-content)]])
 
+(def timers (atom []))
+; (reset! state (init-state))
 (defn ^:dev/before-load stop []
+  (doseq [t @timers]
+    (js/clearInterval t))
   (println "Stopping..."))
 
 (defn ^:dev/after-load start []
   (println (str "Starting..."))
-  (rdom/render [rts-app] (js/document.getElementById "app")))
+  (swap! state redraw-world)
+  (rdom/render [rts-app] (js/document.getElementById "app"))
+  (swap! timers conj (js/setInterval tick! 16.66))
+  (swap! timers conj (js/setInterval
+                      #(do 
+                         (reset! fps @frame-counter)
+                         (reset! frame-counter 0))
+                      1000)))
 
 (defn ^:export init []
   (println "Initializing...")
   (reset! state (init-state))
   (start)
-  (io/init!)
-  (js/setInterval tick! 20))
+  (io/init!))
 
