@@ -20,3 +20,6 @@
   (let [obstacles #{:w}]
     (some? (obstacles (get-in world [y x])))))
 
+(defn in-world? [world x y]
+  (and (< -1 x (world-width world))
+       (< -1 y (world-height world))))
