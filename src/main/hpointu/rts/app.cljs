@@ -26,8 +26,8 @@
          (< y (+ cy 14)))))
 
 (defn visible-range [[cx cy :as camera]]
-  (for [x (range (int cx) (int (+ cx 18)))
-        y (range (int cy) (int (+ cy 14)))]
+  (for [x (range (int (- cx 2)) (int (+ cx 18 2)))
+        y (range (int (- cy 2)) (int (+ cy 14 2)))]
     [x y]))
 
 (defn hover? [{:keys [hover]} x y]
@@ -94,12 +94,15 @@
 
 (defn clamp-camera [{:keys [world] :as state}]
   (let [max-x (- (core/world-width world) 17.4)
-        max-y (- (core/world-height world) 13.6)]
+        max-y (- (core/world-height world) 13.6)
+        round (fn [f] (/ (js/Math.round (* 10 f)) 10))
+        fixed (fn [camera] (into [] (map round camera)))]
     (-> state
       (update-in [:camera 0] min max-x)
       (update-in [:camera 0] max 0)
       (update-in [:camera 1] min max-y)
-      (update-in [:camera 1] max 0))))
+      (update-in [:camera 1] max 0)
+      (update :camera fixed))))
 
 (defn move-camera [state dx dy]
   (let [speed 0.3]
@@ -129,22 +132,33 @@
     (-> state
         (update-hover x y)
         (handle-keys))))
+
+
+(defn draw-game-elem! [state [update-type & args]]
+  (cond (= update-type :cell)
+        (let [[x y] args]
+          (when (visible? state x y)
+            (draw-tile! (context "game") state x y SIZE)))
+        (= update-type :clear)
+        (let [canvas (get-game-canvas)]
+          (.clearRect (context "game") 0 0 (.-width canvas) (.-height canvas)))))
+    
+(defn draw-minimap-elem! [{:keys [world] :as state} [update-type & args]]
+  (cond (= update-type :cell)
+        (let [size 3
+              [x y] args
+              color (if (core/obstacle? world x y) "gray" "#111")
+              [x y] (to-minimap-canvas args size)]
+          (g/render-item! (context "minimap") {:type :rect :x x :y y
+                                               :w size :h size :fill color}))))
  
-(defn draw! [{:keys [world-updates world hover] :as state}]
-  (doseq [[t & other] world-updates]
-    (when (= t :cell)
-      (let [[x y] other]
-        (when (visible? state x y)
-          (draw-tile! (context "game") state x y SIZE))))
-    (when (= t :clear)
-      (let [canvas (get-game-canvas)]
-        (.clearRect (context "game") 0 0 (.-width canvas) (.-height canvas)))))
-  (doseq [[t x y] world-updates
-          :when (= t :cell)]
-    (let [size 3
-          color (if (core/obstacle? world x y) "gray" "#111")
-          [x y] (to-minimap-canvas [x y] size)]
-      (g/render-item! (context "minimap") {:type :rect :x x :y y :w size :h size :fill color})))
+(defn draw! [{:keys [world-updates world] :as state}]
+  (doseq [wu world-updates]
+    (draw-game-elem! state wu)
+    (draw-minimap-elem! state wu))
+  (let [[cx cy] (:camera state)]
+    (g/render-item! (context "minimap") {:type :box :x (* 3 cx) :y (* 3 cy)
+                                         :w 53 :h 42 :color "white"}))
   (assoc state :world-updates []))
 
 (defn tick! []
@@ -165,7 +179,11 @@
                  :padding 10
                  :width 820
                  :background-color "black"}}
-    "RTS Demo"]
+    "RTS Demo" [:span {:style {:font-size "0.7em"
+                               :font-family "mono"
+                               :color "red"
+                               :margin-left 90}}
+                "- Press W on the map to place a wall"]]
    [:div {:style {:display "flex"}}
      [:div {:style {:width 223
                     :margin-right 5
@@ -176,13 +194,17 @@
                 :height 223
                 :style {:background-color "#111" :width 223 :height 223}}]
       [:div {:style {:background-color "black"
+                     :font-family "mono"
                      :flex-grow 1
                      :padding 15 :margin-top 5}}
        [:h4 {:style {:margin 0}} "TODO:"]
-       [:ul {:style {:font-size "0.8em" :margin 0}}
-        [:li "Minimap"]
-        [:li "Camera movement"]
-        [:li "Mouse mode"]]]]
+       [:ul {:style {:font-size "0.8em" :margin 0 :padding-left 20}}
+        [:li {:style {:text-decoration "line-through" :color "#888"}} "Minimap"]
+        [:li {:style {:text-decoration "line-through" :color "#888"}} "Camera movement"]
+        [:li {:style {:text-decoration "initial"}} "Mouse mode"]
+        [:li {:style {:text-decoration "initial"}} "Entities"]
+        [:li {:style {:text-decoration "initial"}} "Path finding"]
+        [:li {:style {:text-decoration "initial"}} "Gameplay elements"]]]]
      [:canvas {:id "game" :width 611 :height 480
                :onContextMenu #(.preventDefault %)
                :style {:background-color "black"

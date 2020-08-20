@@ -13,6 +13,15 @@
     (.fill)
     (.closePath)))
 
+(defmethod render-item! :box render-box
+  [ctx {:keys [x y w h color] :as item}]
+  (doto ctx
+    (.beginPath)
+    (.rect x y w h)
+    (aset "strokeStyle" color)
+    (.stroke)
+    (.closePath)))
+
 (defmethod render-item! :circle render-circle
   [ctx {:keys [x y r fill] :as item}]
   (doto ctx
