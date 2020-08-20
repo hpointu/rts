@@ -14,27 +14,49 @@
 (defonce frame-counter (atom 0))
 (defonce fps (r/atom 0))
 
-(defn get-debug-content []
-  (str "FPS: " @fps "\n"
-    (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
-                                          (dissoc :world-updates))))))
-
 (def SIZE 35)
 (defn init-state []
   {:world (core/->world 74 74)
+   :camera [0 0]
    :world-updates []})
+
+(defn visible? [{:keys [camera]} x y]
+  (let [[cx cy] camera]
+    (and (< x (+ cx 18))
+         (< y (+ cy 14)))))
+
+(defn visible-range [[cx cy :as camera]]
+  (for [x (range (int cx) (int (+ cx 18)))
+        y (range (int cy) (int (+ cy 14)))]
+    [x y]))
+
+(defn hover? [{:keys [hover]} x y]
+  (= hover [x y]))
+
+(defn cell-redraw [[x y]]
+  [:cell x y])
 
 (defn redraw-world [{:keys [world] :as state}]
   (let [elems (for [x (range (core/world-width world))
                     y (range (core/world-height world))]
-                [x y])]
-    (assoc state :world-updates elems)))
+                (cell-redraw [x y]))]
+    (-> state
+        (update :world-updates conj [:clear])
+        (update :world-updates into elems))))
 
-(defn to-screen
-  ([coords]
-   (to-screen coords SIZE))
-  ([[x y] size]
-   [(* size x) (* size y)]))
+(defn redraw-visible [{:keys [world camera] :as state}]
+  (let [elems (for [[x y] (visible-range camera)]
+                (cell-redraw [x y]))]
+    (-> state
+        (update :world-updates conj [:clear])
+        (update :world-updates into elems))))
+
+(defn to-game-canvas [{:keys [camera]} [x y]]
+  (let [[cx cy] camera]
+    (into [] (map int [(* SIZE (- x cx)) (* SIZE (- y cy))]))))
+
+(defn to-minimap-canvas [[x y] size]
+  [(* size x) (* size y)])
 
 (defn to-world [[x y]]
   [(/ x SIZE) (/ y SIZE)])
@@ -48,54 +70,80 @@
 (defn context [canvas-name]
   (.getContext (js/document.getElementById canvas-name) "2d"))
 
-(defn visible? [state x y]
-  (and (< x 18)
-       (< y 14)))
-
-(defn draw-tile! [ctx world x y size hover?]
-  (let [tile-color (if (core/obstacle? world x y) "gray" (if hover? "green" "#222"))
-        [x y] (to-screen [x y])]
+(defn draw-tile! [ctx {:keys [world] :as state} x y size]
+  (let [tile-color (cond
+                     (core/obstacle? world x y) "gray"
+                     (hover? state x y) "green"
+                     :else "#222")
+        [x y] (to-game-canvas state [x y])]
     (g/render-item! ctx {:type :rect :x (+ 1 x) :y (+ 1 y)
                          :w (- size 2) :h (- size 2) :fill tile-color})
     (g/render-item! ctx {:type :rect :x (+ 2 x) :y (+ 2 y)
                          :w (- size 4) :h (- size 4) :fill "black"})))
 
-(defn draw-minimap! [ctx {:keys [world] :as state}]
-  (doseq [x (range (core/world-width world))
-          y (range (core/world-height world))]
-    (let [size 2
-          color (if (core/obstacle? world x y) "gray" "#111")
-          [x y] (to-screen [x y] size)]
-      (g/render-item! ctx {:type :rect :x x :y y :w size :h size :fill color}))))
-
-(defn update-hover [{:keys [hover world] :as state} x y]
-  (let [new-hover (when (core/in-world? world x y) [x y])]
+(defn update-hover [{:keys [hover world camera] :as state} x y]
+  (let [[cx cy] camera
+        new-hover (when (core/in-world? world x y) [x y])]
     (-> state
         (assoc :hover new-hover)
-        (update :world-updates into (keep identity [new-hover hover])))))
+        (update :world-updates into (map cell-redraw (keep identity [new-hover hover]))))))
 
-(defn handle-input [{:keys [hover] :as state}]
-  (if (and hover (io/key-pressed? "KeyW"))
-    (let [[x y] hover]
-      (assoc-in state [:world y x] :w))
-    state))
+(defn add-wall [{:keys [hover] :as state}]
+  (let [[x y] hover]
+    (update state :world core/set-world-cell x y :w)))
+
+(defn clamp-camera [{:keys [world] :as state}]
+  (let [max-x (- (core/world-width world) 17.4)
+        max-y (- (core/world-height world) 13.6)]
+    (-> state
+      (update-in [:camera 0] min max-x)
+      (update-in [:camera 0] max 0)
+      (update-in [:camera 1] min max-y)
+      (update-in [:camera 1] max 0))))
+
+(defn move-camera [state dx dy]
+  (let [speed 0.3]
+    (-> state
+        (update-in [:camera 0] + (* speed dx))
+        (update-in [:camera 1] + (* speed dy))
+        (clamp-camera)
+        (redraw-visible))))
+
+(defn handle-keys [{:keys [hover] :as state}]
+  (cond-> state
+    ;; Pressing W
+    (and hover (io/key-pressed? "KeyW"))
+    (add-wall)
+    ;; Pressing arrows
+    (some io/key-pressed? #{"ArrowLeft" "ArrowRight" "ArrowUp" "ArrowDown"})
+    (move-camera (cond (io/key-pressed? "ArrowLeft") -1
+                       (io/key-pressed? "ArrowRight") 1
+                       :else 0)
+                 (cond (io/key-pressed? "ArrowUp") -1
+                      (io/key-pressed? "ArrowDown") 1
+                      :else 0))))
    
-
-(defn update-state [{:keys [world] :as state} dt] state
+(defn update-state [{:keys [world camera] :as state} dt] state
   (let [canvas (get-game-canvas)
-        [x y] (map int (to-world (io/mouse-pos canvas)))]
+        [x y] (map (comp int +) camera (to-world (io/mouse-pos canvas)))]
     (-> state
         (update-hover x y)
-        (handle-input))))
+        (handle-keys))))
  
 (defn draw! [{:keys [world-updates world hover] :as state}]
-  (doseq [[x y] world-updates
-          :when (visible? state x y)]
-    (draw-tile! (context "game") world x y SIZE (= hover [x y])))
-  (doseq [[x y] world-updates]
+  (doseq [[t & other] world-updates]
+    (when (= t :cell)
+      (let [[x y] other]
+        (when (visible? state x y)
+          (draw-tile! (context "game") state x y SIZE))))
+    (when (= t :clear)
+      (let [canvas (get-game-canvas)]
+        (.clearRect (context "game") 0 0 (.-width canvas) (.-height canvas)))))
+  (doseq [[t x y] world-updates
+          :when (= t :cell)]
     (let [size 3
           color (if (core/obstacle? world x y) "gray" "#111")
-          [x y] (to-screen [x y] size)]
+          [x y] (to-minimap-canvas [x y] size)]
       (g/render-item! (context "minimap") {:type :rect :x x :y y :w size :h size :fill color})))
   (assoc state :world-updates []))
 
@@ -107,6 +155,10 @@
         (reset! state new-state)
         (swap! frame-counter inc))))
 
+(defn get-debug-content []
+  (str "FPS: " @fps " - " @io/keymap "\n"
+       (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
+                                             (dissoc :world-updates))))))
 (defn rts-app [props]
   [:div {:style {:color "white"}}
    [:h2 {:style {:margin "0 0 5px 0"
@@ -143,7 +195,7 @@
     (get-debug-content)]])
 
 (def timers (atom []))
-; (reset! state (init-state))
+;(reset! state (init-state))
 (defn ^:dev/before-load stop []
   (doseq [t @timers]
     (js/clearInterval t))

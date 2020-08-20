@@ -20,6 +20,10 @@
           [:w :g :g :w]
           [:w :w :w :w]])))
 
-
 (deftest in-world
   (is (core/in-world? (core/->world 4 3) 2 2)))
+
+(deftest change-world-value
+  (is (= (core/set-world-cell (core/->world 2 2) 1 0 :x)
+         [[:w :x]
+          [:w :w]])))

@@ -19,6 +19,9 @@
 (defn world-cell [world x y]
   (get-in world [y x]))
 
+(defn set-world-cell [world x y v]
+  (assoc-in world [y x] v))
+
 (defn obstacle? [world x y]
   (let [obstacles #{:w}]
     (some? (obstacles (get-in world [y x])))))
