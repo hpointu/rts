@@ -161,7 +161,7 @@
 (defn end-game-right-click [{:keys [world right-click] :as state}]
   (defn set-unit-destination [{:keys [x y selected?] :as unit}]
     (if selected?
-      (let [waypoints (path world [x y] right-click)]
+      (let [waypoints (path world (map int [x y]) right-click)]
         (assoc unit :waypoints waypoints))
       unit))
 
