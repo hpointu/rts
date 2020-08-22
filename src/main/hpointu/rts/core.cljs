@@ -38,6 +38,13 @@
     (some? (obstacles (get-in world [y x])))))
 
 
+(defn cost [world from to]
+  (let [[x1 y1] to]
+    (if (obstacle? world x1 y1)
+      99999
+      (distance from to))))
+
+
 (defn in-world?
 
   ([world [x y]]

@@ -16,7 +16,7 @@
     (let [current (get came-from current)]
       (if current
         (recur came-from current (conj total current))
-        total)))
+        (into [] (reverse total)))))
 
   (defn score [m k]
     (get m k 9999999))
@@ -27,12 +27,12 @@
   (defn neighbour-reducer [current]
     (fn [{:keys [came-from g-score open] :as acc} neighbour] 
       (let [tmp-score (+ (score g-score current)
-                         (core/distance current neighbour))]
+                         (core/cost world current neighbour))] 
         (if (>= tmp-score (score g-score neighbour))
           acc
           {:came-from (assoc came-from neighbour current)
            :g-score (assoc g-score neighbour tmp-score)
-           :open (assoc open neighbour (+ (score g-score neighbour)
+           :open (assoc open neighbour (+ tmp-score
                                           (h neighbour)))}))))
 
   (loop [closed #{}
@@ -47,11 +47,10 @@
           (reconstruct came-from pos [pos])
           (let [closed (conj closed pos)
                 neighbours (remove closed (core/neighbours world pos))
-                {:keys [came-from g-score open]}
+                {:keys [came-from g-score open] :as acc}
                 (reduce (neighbour-reducer pos)
                         {:came-from came-from
                          :g-score g-score
                          :open open}
                         neighbours)]
             (recur closed open came-from g-score)))))))
-            ;(recur (conj closed) open came-from g-score)))))))
