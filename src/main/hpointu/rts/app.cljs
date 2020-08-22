@@ -62,8 +62,11 @@
 (defn to-minimap-canvas [[x y] size]
   [(* size x) (* size y)])
 
-(defn to-world [[x y]]
-  [(/ x SIZE) (/ y SIZE)])
+(defn to-world
+  ([pos]
+   (to-world pos SIZE))
+  ([[x y] size]
+   [(/ x size) (/ y size)]))
 
 (defn get-game-canvas []
   (js/document.getElementById "game"))
@@ -71,9 +74,17 @@
 (defn get-minimap-canvas []
   (js/document.getElementById "minimap"))
 
+(defn get-element [id]
+  (js/document.getElementById id))
+
 (defn context [canvas-name]
   (.getContext (js/document.getElementById canvas-name) "2d"))
 
+(defn mouse-on-element? [id]
+  (let [elem (get-element id)
+        [x y] (io/mouse-pos elem)]
+    (and (< -1 x elem.width)
+         (< -1 y elem.height))))
 
 (defn init-contexts []
   (let [minimap (get-minimap-canvas)
@@ -127,6 +138,16 @@
         (update-in [:camera 1] + (* speed dy))
         (clamp-camera))))
 
+(defn handle-minimap [state]
+  (if (and (io/mouse-pressed? :left)
+           (mouse-on-element? "minimap"))
+    (let [[x y] (to-world (io/mouse-pos (get-minimap-canvas)) 3)]
+      (-> state
+          (assoc-in [:camera 0] (- x 9))
+          (assoc-in [:camera 1] (- y 7))
+          (clamp-camera)))
+    state))
+
 (defn handle-keys [{:keys [hover] :as state}]
   (cond-> state
     ;; Pressing W
@@ -154,6 +175,7 @@
         (move-units dt)
         (update-hover x y)
         (handle-keys)
+        (handle-minimap)
         (redraw-visible))))
 
 
@@ -181,18 +203,23 @@
     (draw-minimap-elem! (:context (contexts :minimap-off)) state wu))
   (doseq [{:keys [x y selected?]} units
           :when (visible? state x y)]
-    (let [[x y] (map + (to-game-canvas state [x y]) [(/ SIZE 2) (/ SIZE 2)])]
+    (let [[x y] (map + (to-game-canvas state [x y])
+                     [(/ SIZE 2) (/ SIZE 2)])]
       (g/render-item! (context "game") {:type :circle :x x :y y :r 12 :fill "#0cf"})))
   (let [[cx cy] (:camera state)
         mmap (contexts :minimap)]
-    (.clearRect (:context mmap) 0 0 (.-width (:canvas mmap)) (.-height (:canvas mmap)))
-    (.drawImage (:context mmap) (:canvas (contexts :minimap-off)) 0 0)
+    (.clearRect (:context mmap) 0 0
+                (.-width (:canvas mmap)) (.-height (:canvas mmap)))
+    (.drawImage (:context mmap)
+                (:canvas (contexts :minimap-off)) 0 0)
     (doseq [{:keys [x y]} units]
       (let [[x y] (to-minimap-canvas [x y] 3)]
-        (g/render-item! (context "minimap") {:type :rect :x x :y y :w 3 :h 3
-                                             :fill "yellow"})))
-    (g/render-item! (context "minimap") {:type :box :x (* 3 cx) :y (* 3 cy)
-                                         :w 53 :h 42 :color "white"}))
+        (g/render-item! (context "minimap")
+                        {:type :rect :x x :y y :w 3 :h 3
+                         :fill "yellow"})))
+    (g/render-item! (context "minimap")
+                    {:type :box :x (* 3 cx) :y (* 3 cy)
+                     :w 53 :h 42 :color "white"}))
   (assoc state :world-updates []))
 
 (defn tick! [contexts]
@@ -204,7 +231,7 @@
         (swap! frame-counter inc))))
 
 (defn get-debug-content []
-  (str "FPS: " @fps " - " @io/keymap "\n"
+  (str "FPS: " @fps " - " @io/keymap " - " @io/mouse "\n"
        (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
                                              (dissoc :world-updates))))))
 (defn rts-app [props]
@@ -242,7 +269,6 @@
         [:li {:style {:text-decoration "initial"}} "Path finding"]
         [:li {:style {:text-decoration "initial"}} "Gameplay elements"]]]]
      [:canvas {:id "game" :width 611 :height 480
-               :onContextMenu #(.preventDefault %)
                :style {:background-color "black"
                        :min-width 611
                        :margin 0}}]]
@@ -253,7 +279,7 @@
     (get-debug-content)]])
 
 (def timers (atom []))
-(reset! state (init-state))
+;(reset! state (init-state))
 (defn ^:dev/before-load stop []
   (doseq [t @timers]
     (js/clearInterval t))

@@ -1,10 +1,13 @@
 (ns hpointu.rts.input)
 
-(def keymap (atom #{}))
-(def mouse (atom {:x 0 :y 0 :clicked? false}))
+(defonce keymap (atom #{}))
+(defonce mouse (atom {:x 0 :y 0 :left false :right false}))
 
 (defn key-pressed? [code]
   (contains? @keymap code))
+
+(defn mouse-pressed? [code]
+  (get @mouse code))
 
 (defn mouse-pos [elem]
   (let [rect (.getBoundingClientRect elem)
@@ -12,9 +15,23 @@
     [(- x (.-left rect))
      (- y (.-top rect))]))
 
+(defn- mouseup [e]
+  (when (= 0 e.button)
+    (swap! mouse assoc :left false))
+  (when (= 2 e.button)
+    (swap! mouse assoc :right false)))
+
+(defn- mousedown [e]
+  (when (= 0 e.button)
+    (swap! mouse assoc :left true))
+  (when (= 2 e.button)
+    (swap! mouse assoc :right true)))
+
 (defn init! []
   (js/document.addEventListener "keydown" #(swap! keymap conj (.-code %)))
   (js/document.addEventListener "keyup" #(swap! keymap disj (.-code %)))
+  (js/document.addEventListener "mouseup" mouseup)
+  (js/document.addEventListener "mousedown" mousedown)
   (js/document.addEventListener "mousemove" #(swap! mouse assoc
                                                     :x (.-clientX %)
                                                     :y (.-clientY %))))
