@@ -9,6 +9,12 @@
   (let [l (distance [0 0] v)]
     (into [] (map / v [l l]))))
 
+(defn collides? [[x1 y1 w1 h1] [x2 y2 w2 h2]]
+  (and (< x1 (+ x2 w2))
+       (< x2 (+ x1 w1))
+       (< y1 (+ y2 h2))
+       (< y2 (+ y1 h1))))
+
 (defn world-width [world]
   (count (get world 0)))
 
@@ -44,7 +50,6 @@
       99999
       (distance from to))))
 
-
 (defn in-world?
 
   ([world [x y]]
@@ -68,7 +73,6 @@
    :y y
    :waypoints []
    :selected? false})
-
 
 (defn add-waypoint [unit x y]
   (update unit :waypoints conj [x y]))

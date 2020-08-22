@@ -14,10 +14,13 @@
     (.closePath)))
 
 (defmethod render-item! :box render-box
-  [ctx {:keys [x y w h color] :as item}]
+  [ctx {:keys [x y w h color line-width]
+        :or {line-width 1}
+        :as item}]
   (doto ctx
     (.beginPath)
     (.rect x y w h)
+    (aset "lineWidth" line-width)
     (aset "strokeStyle" color)
     (.stroke)
     (.closePath)))

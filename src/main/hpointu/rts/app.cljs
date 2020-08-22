@@ -68,6 +68,10 @@
   ([[x y] size]
    [(/ x size) (/ y size)]))
 
+(defn unit-aabb [state {:keys [x y] :as unit}]
+  (let [[x y] (to-game-canvas state [x y])]
+    (into [] (map #(+ 5 %) [x y 20 20])))) 
+
 (defn get-game-canvas []
   (js/document.getElementById "game"))
 
@@ -138,15 +142,45 @@
         (update-in [:camera 1] + (* speed dy))
         (clamp-camera))))
 
-(defn handle-minimap [state]
-  (if (and (io/mouse-pressed? :left)
-           (mouse-on-element? "minimap"))
+(defn select-units [{:keys [selector] :as state}]
+  (let [{:keys [x1 y1 x2 y2]} selector
+        [x1 x2] [(min x1 x2) (max x1 x2)]
+        [y1 y2] [(min y1 y2) (max y1 y2)]
+        rect [x1 y1 (- x2 x1) (- y2 y1)]]
+    (defn select-unit [{:keys [x y] :as u}]
+      (assoc u :selected? (core/collides? (unit-aabb state u) rect)))
+    (update state :units #(into [] (map select-unit %)))))
+
+(defn handle-mouse-game [{:keys [selector] :as state}]
+  (if (io/mouse-pressed? :left)
+    (let [[x y] (io/mouse-pos (get-game-canvas))]
+      (if selector
+        (update state :selector #(assoc % :x2 x :y2 y))
+        (-> state
+          (update :selector #(assoc % :x1 x :y1 y :x2 x :y2 y))
+          (dissoc :selected))))
+    (if selector
+      (-> state
+        (select-units)
+        (dissoc :selector))
+      state)))
+    
+
+(defn handle-mouse-minimap [state]
+  (if (io/mouse-pressed? :left)
     (let [[x y] (to-world (io/mouse-pos (get-minimap-canvas)) 3)]
       (-> state
           (assoc-in [:camera 0] (- x 9))
           (assoc-in [:camera 1] (- y 7))
           (clamp-camera)))
     state))
+
+(defn handle-mouse [state]
+  (cond (mouse-on-element? "minimap")
+        (handle-mouse-minimap state)
+        (mouse-on-element? "game")
+        (handle-mouse-game state)
+        :default state))
 
 (defn handle-keys [{:keys [hover] :as state}]
   (cond-> state
@@ -175,7 +209,7 @@
         (move-units dt)
         (update-hover x y)
         (handle-keys)
-        (handle-minimap)
+        (handle-mouse)
         (redraw-visible))))
 
 
@@ -197,26 +231,41 @@
           (g/render-item! ctx {:type :rect :x x :y y
                                :w size :h size :fill color}))))
  
-(defn draw! [{:keys [world-updates world units] :as state} contexts]
+(defn draw! [{:keys [world-updates world units selector]
+              :as state} contexts]
   (doseq [wu world-updates]
     (draw-game-elem! state wu)
     (draw-minimap-elem! (:context (contexts :minimap-off)) state wu))
-  (doseq [{:keys [x y selected?]} units
+  (doseq [{:keys [x y selected?] :as u} units
           :when (visible? state x y)]
     (let [[x y] (map + (to-game-canvas state [x y])
-                     [(/ SIZE 2) (/ SIZE 2)])]
-      (g/render-item! (context "game") {:type :circle :x x :y y :r 12 :fill "#0cf"})))
+                     [(/ SIZE 2) (/ SIZE 2)])
+          color "#0cf"]
+      (when selected?
+        (let [[x y w h] (unit-aabb state u)]
+          (g/render-item! (context "game")
+                          {:type :box
+                           :x (- x 3) :y (- y 3)
+                           :w (+ w 6) :h (+ h 6)
+                           :color "yellow"})))
+      (g/render-item! (context "game")
+                      {:type :circle :x x :y y :r 12 :fill color})))
+  (if-let [{:keys [x1 y1 x2 y2]} selector]
+    (g/render-item! (context "game")
+                    {:type :box :x x1 :y y1
+                     :w (- x2 x1) :h (- y2 y1)
+                     :color "yellow"}))
   (let [[cx cy] (:camera state)
         mmap (contexts :minimap)]
     (.clearRect (:context mmap) 0 0
                 (.-width (:canvas mmap)) (.-height (:canvas mmap)))
     (.drawImage (:context mmap)
                 (:canvas (contexts :minimap-off)) 0 0)
-    (doseq [{:keys [x y]} units]
+    (doseq [{:keys [x y selected?]} units]
       (let [[x y] (to-minimap-canvas [x y] 3)]
         (g/render-item! (context "minimap")
                         {:type :rect :x x :y y :w 3 :h 3
-                         :fill "yellow"})))
+                         :fill (if selected? "yellow" "#0cf")})))
     (g/render-item! (context "minimap")
                     {:type :box :x (* 3 cx) :y (* 3 cy)
                      :w 53 :h 42 :color "white"}))
@@ -263,10 +312,10 @@
         [:li {:style {:text-decoration "line-through" :color "#888"}} "Minimap"]
         [:li {:style {:text-decoration "line-through" :color "#888"}} "Camera movement"]
         [:li {:style {:text-decoration "line-through" :color "#888"}} "Entities"]
+        [:li {:style {:text-decoration "line-through" :color "#888"}} "Mouse clicks..."]
+        [:li {:style {:text-decoration "line-through" :color "#888"}} "Path finding"]
         [:li {:style {:text-decoration "initial"}} "Mouse mode"]
-        [:li {:style {:text-decoration "initial"}} "Mouse clicks..."]
         [:li {:style {:text-decoration "initial"}} "Stop scrolling on keys"]
-        [:li {:style {:text-decoration "initial"}} "Path finding"]
         [:li {:style {:text-decoration "initial"}} "Gameplay elements"]]]]
      [:canvas {:id "game" :width 611 :height 480
                :style {:background-color "black"
