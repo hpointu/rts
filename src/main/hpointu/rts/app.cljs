@@ -2,6 +2,7 @@
   (:require [hpointu.rts.graphics :as g]
             [hpointu.rts.input :as io]
             [hpointu.rts.core :as core]
+            [hpointu.rts.path :refer [path]]
             [reagent.core :as r]
             [reagent.dom :as rdom]
             [cljs.pprint]))
@@ -67,6 +68,9 @@
    (to-world pos SIZE))
   ([[x y] size]
    [(/ x size) (/ y size)]))
+
+(defn to-grid [camera pos]
+  (map (comp int +) camera (to-world pos)))
 
 (defn unit-aabb [state {:keys [x y] :as unit}]
   (let [[x y] (to-game-canvas state [x y])]
@@ -151,19 +155,44 @@
       (assoc u :selected? (core/collides? (unit-aabb state u) rect)))
     (update state :units #(into [] (map select-unit %)))))
 
-(defn handle-mouse-game [{:keys [selector] :as state}]
-  (if (io/mouse-pressed? :left)
-    (let [[x y] (io/mouse-pos (get-game-canvas))]
+(defn end-game-left-click [state]
+  (-> state
+      (select-units)
+      (dissoc :selector)
+      (dissoc :left-click)))
+
+(defn end-game-right-click [{:keys [world right-click] :as state}]
+  (defn set-unit-destination [{:keys [x y selected?] :as unit}]
+    (if selected?
+      (let [waypoints (path world [x y] right-click)]
+        (assoc unit :waypoints waypoints))
+      unit))
+
+  (-> state
+      (update :units #(into [] (map set-unit-destination %)))
+      (dissoc :right-click)))
+
+(defn handle-mouse-game [{:keys [camera selector right-click] :as state}]
+  (let [[x y] (io/mouse-pos (get-game-canvas))
+        [wx wy] (to-grid camera [x y])]
+    (cond
+      (and (io/mouse-pressed? :left) (not (io/mouse-pressed? :right)))
       (if selector
         (update state :selector #(assoc % :x2 x :y2 y))
         (-> state
+          (assoc :left-click [wx wy])
           (update :selector #(assoc % :x1 x :y1 y :x2 x :y2 y))
-          (dissoc :selected))))
-    (if selector
-      (-> state
-        (select-units)
-        (dissoc :selector))
-      state)))
+          (dissoc :selected)))
+      (and (io/mouse-pressed? :right) (not (io/mouse-pressed? :left)))
+      (if (not right-click)
+        (assoc state :right-click [wx wy])
+        state)
+      :default
+      (if selector
+        (-> state (end-game-left-click))
+        (if right-click
+          (-> state (end-game-right-click))
+          state)))))
     
 
 (defn handle-mouse-minimap [state]
@@ -187,9 +216,6 @@
     ;; Pressing W
     (and hover (io/key-pressed? "KeyW"))
     (add-wall)
-    ;; Pressing Space
-    (and hover (io/key-pressed? "Space"))
-    (update-in [:units 0] core/add-waypoint (nth hover 0) (nth hover 1))
     ;; Pressing arrows
     (some io/key-pressed? #{"ArrowLeft" "ArrowRight" "ArrowUp" "ArrowDown"})
     (move-camera (cond (io/key-pressed? "ArrowLeft") -1
