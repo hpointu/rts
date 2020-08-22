@@ -337,7 +337,7 @@
         [:li {:style {:text-decoration "line-through" :color "#888"}} "Entities"]
         [:li {:style {:text-decoration "line-through" :color "#888"}} "Mouse clicks..."]
         [:li {:style {:text-decoration "line-through" :color "#888"}} "Path finding"]
-        [:li {:style {:text-decoration "initial"}} "Mouse mode"]
+        [:li {:style {:text-decoration "initial"}} "Multiple units, One goal"]
         [:li {:style {:text-decoration "initial"}} "Stop scrolling on keys"]
         [:li {:style {:text-decoration "initial"}} "Gameplay elements"]]]]
      [:canvas {:id "game" :width 611 :height 480
