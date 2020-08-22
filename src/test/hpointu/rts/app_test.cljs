@@ -21,9 +21,23 @@
           [:w :w :w :w]])))
 
 (deftest in-world
-  (is (core/in-world? (core/->world 4 3) 2 2)))
+  (is (core/in-world? (core/->world 4 3) 2 2))
+  (is (core/in-world? (core/->world 4 3) [2 2])))
+
+(deftest neighbours
+  (is (= (set (core/neighbours (core/->world 3 3) [0 0]))
+         #{[1 0] [1 1] [0 1]})))
 
 (deftest change-world-value
   (is (= (core/set-world-cell (core/->world 2 2) 1 0 :x)
          [[:w :x]
           [:w :w]])))
+
+(deftest distance
+  (is (= 5 (core/distance [2 3] [6 6]))))
+
+(deftest normalize
+  (is (= [1 0] (core/normalize [5 0])))
+  ; test len more or less 1 (floating dist from js/Math.sqrt)
+  (is (> 0.0000000000001 (- 1 (core/distance [0 0] (core/normalize [7 3]))))))
+
