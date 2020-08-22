@@ -19,10 +19,7 @@
 (defn init-state []
   {:world (core/->world 74 74)
    :camera [0 0]
-   :units [(-> (core/->unit 3 4)
-               (core/add-waypoint 5 5)
-               (core/add-waypoint 2 7)
-               (core/add-waypoint 2 9))]
+   :units [(core/->unit 3 4)]
    :world-updates []})
 
 (defn visible? [{:keys [camera]} x y]
