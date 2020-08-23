@@ -16,7 +16,7 @@
         (into [] (reverse total)))))
 
   (defn score [m k]
-    (get m k 9999999))
+    (get m k ##Inf))
 
   (defn h [n]
     (distance n end))

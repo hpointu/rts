@@ -43,7 +43,9 @@
       (let [cost-fn #(core/cost world %1 %2)
             neighbours-fn #(core/neighbours world %1)
             path (path (map int [x y]) target cost-fn neighbours-fn)]
-        (assoc unit :waypoints path)))))
+        (if path
+          (assoc unit :waypoints path)
+          (update unit :goals (comp vec rest)))))))
       
 (defn update-actor [state unit dt]
   (if-let [current-goal (first (:goals unit))]
