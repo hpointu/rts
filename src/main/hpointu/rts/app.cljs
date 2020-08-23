@@ -2,7 +2,8 @@
   (:require [hpointu.rts.graphics :as g]
             [hpointu.rts.input :as io]
             [hpointu.rts.core :as core]
-            [hpointu.rts.path :refer [path]]
+            [hpointu.rts.action :as action]
+            [hpointu.rts.utils :refer [collides?]]
             [reagent.core :as r]
             [reagent.dom :as rdom]
             [cljs.pprint]))
@@ -149,7 +150,7 @@
         [y1 y2] [(min y1 y2) (max y1 y2)]
         rect [x1 y1 (- x2 x1) (- y2 y1)]]
     (defn select-unit [{:keys [x y] :as u}]
-      (assoc u :selected? (core/collides? (unit-aabb state u) rect)))
+      (assoc u :selected? (collides? (unit-aabb state u) rect)))
     (update state :units #(into [] (map select-unit %)))))
 
 (defn end-game-left-click [state]
@@ -161,8 +162,9 @@
 (defn end-game-right-click [{:keys [world right-click] :as state}]
   (defn set-unit-destination [{:keys [x y selected?] :as unit}]
     (if selected?
-      (let [waypoints (path world (map int [x y]) right-click)]
-        (assoc unit :waypoints waypoints))
+      (let [target right-click]
+        (-> unit
+          (update :goals conj (action/walk target))))
       unit))
 
   (-> state
@@ -223,7 +225,8 @@
                       :else 0))))
 
 (defn move-units [{:keys [units] :as state} dt]
-  (assoc state :units (into [] (map #(core/walk % dt) units))))
+  (assoc state
+         :units (into [] (map #(action/update-actor state % dt) units))))
    
 (defn update-state [{:keys [world camera] :as state} dt] state
   (let [canvas (get-game-canvas)

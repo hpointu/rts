@@ -13,6 +13,18 @@
     (.fill)
     (.closePath)))
 
+(defmethod render-item! :cross render-cross
+  [ctx {:keys [x y width color]}]
+  (let [hw (/ width 2)]
+    (doto ctx
+      (.beginPath)
+      (.moveTo (- x hw) (- y hw))
+      (.lineTo (+ x hw) (+ y hw))
+      (.moveTo (+ x hw) (- y hw))
+      (.lineTo (- x hw) (+ y hw))
+      (aset "strokeStyle" color)
+      (.closePath))))
+
 (defmethod render-item! :box render-box
   [ctx {:keys [x y w h color line-width]
         :or {line-width 1}

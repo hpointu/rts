@@ -1,15 +1,12 @@
 (ns hpointu.rts.path
   (:require [tailrecursion.priority-map :refer [priority-map]]
-            [hpointu.rts.core :as core]))
-
-(defn get-cost [world [x y]]
-  (if (core/obstacle? world x y) 999 0))
+            [hpointu.rts.utils :refer [distance]]))
 
 (defn manhattan-dist [[x1 y1] [x2 y2]]
   (+ (js/Math.abs (- x2 x1))
      (js/Math.abs (- y2 y1))))
 
-(defn path [world begin end]
+(defn path [begin end cost-fn neighbours-fn]
   ;; Straight from wikipedia :D
 
   (defn reconstruct [came-from current total]
@@ -22,12 +19,12 @@
     (get m k 9999999))
 
   (defn h [n]
-    (core/distance n end))
+    (distance n end))
 
   (defn neighbour-reducer [current]
     (fn [{:keys [came-from g-score open] :as acc} neighbour] 
       (let [tmp-score (+ (score g-score current)
-                         (core/cost world current neighbour))] 
+                         (cost-fn current neighbour))] 
         (if (>= tmp-score (score g-score neighbour))
           acc
           {:came-from (assoc came-from neighbour current)
@@ -46,7 +43,7 @@
         (if (= pos end)
           (reconstruct came-from pos [pos])
           (let [closed (conj closed pos)
-                neighbours (remove closed (core/neighbours world pos))
+                neighbours (remove closed (neighbours-fn pos))
                 {:keys [came-from g-score open] :as acc}
                 (reduce (neighbour-reducer pos)
                         {:came-from came-from
