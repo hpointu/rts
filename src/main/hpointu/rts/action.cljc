@@ -3,21 +3,6 @@
             [hpointu.rts.path :refer [path]]
             [hpointu.rts.core :as core]))
 
-(defn walk [pos]
-  [:walk pos])
-
-
-(defn units-on-pos [{:keys [units]} [x y]]
-  (filter #(and (= (int x) (int (:x %1)))
-                (= (int y) (int (:y %1))))
-          units))
-
-(defn busy-tile? [{:keys [world units] :as state} [x y] exclude-uid]
-  (let [bee (first (units-on-pos state [x y]))]
-    (if (= (:uid bee) exclude-uid)
-      nil
-      bee)))
-
 (defmulti act (fn [state actor-uid action dt] (first action)))
 
 (defmethod act :wait [state uid [_ t] dt]
@@ -88,3 +73,12 @@
             (update-actor prev-state (first actor) dt))]
     (reduce actor-reducer state units)))
 
+(defprotocol UiAction
+  (action-name [this])
+  (select-action [this state]))
+
+(defmulti confirm-mouse-mode (fn [[mmt _] _] mmt))
+(defmethod confirm-mouse-mode :build
+  [[_ args] {:keys [left-click] :as state}]
+  (println (str "Building a " (name args) " on " left-click "..."))
+  (dissoc state :mouse-mode))

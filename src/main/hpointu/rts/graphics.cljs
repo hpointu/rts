@@ -4,6 +4,15 @@
 
 (defmulti render-item! (fn [ctx item] (:type item)))
 
+(defmethod render-item! :text render-text
+  [ctx {:keys [x y color value size] :as item}]
+  (doto ctx
+    (aset "fillStyle" color)
+    (aset "font" (str size "px Mono"))
+    (aset "textBaseline" "middle")
+    (aset "textAlign" "center")
+    (.fillText value x y)))
+
 (defmethod render-item! :rect render-rect
   [ctx {:keys [x y w h fill] :as item}]
   (doto ctx

@@ -85,21 +85,27 @@
 
     (update state :units #(into {} (assing-select-id %))))
 
-(defn end-game-left-click [state select-unit-predicate]
-  (-> state
-      (select-units select-unit-predicate)
-      (dissoc :selector)
-      (dissoc :left-click)))
+(defn get-selected-units [{:keys [units]}]
+  (filter :selected? (vals units)))
+
+(defn end-game-left-click
+  [{:keys [mouse-mode] :as state} select-unit-predicate]
+  (if mouse-mode
+    (action/confirm-mouse-mode mouse-mode state)
+    (-> state
+        (select-units select-unit-predicate)
+        (dissoc :selector)
+        (dissoc :left-click))))
 
 (defn end-game-right-click [{:keys [world right-click units] :as state}]
 
   (defn set-unit-destination [targets {:keys [x y selected?] :as unit}]
     (if selected?
       (-> unit
-        (update :goals conj (action/walk (nth targets selected?))))
+        (update :goals conj [:walk (nth targets selected?)]))
       unit))
 
-  (let [size (count (filter :selected? (vals units)))
+  (let [size (count (get-selected-units state))
         targets (core/get-free-zone world right-click size)]
     (-> state
         (update :units

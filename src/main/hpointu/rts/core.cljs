@@ -1,6 +1,7 @@
 (ns hpointu.rts.core
   (:require [hpointu.rts.utils :refer [distance]]))
 
+;; TODO Probably move to game.cljc
 (def uids (atom 0))
 (defn get-uid []
   (swap! uids inc)
@@ -85,14 +86,3 @@
             {:keys [limit visited zone] :as acc}
             (reduce reducer initial neighs)]
         (recur limit visited zone)))))
-
-
-(defn ->unit [x y]
-  {:uid (get-uid)
-   :x x
-   :y y
-   :pv 100
-   :pv-max 100
-   :goals []
-   :waypoints []
-   :selected? false})

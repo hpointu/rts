@@ -18,27 +18,45 @@
 (defonce fps (r/atom 0))
 
 (def SIZE 35)
+
+(defrecord Build [building]
+  action/UiAction
+  (action/action-name [{:keys [building]}] (name building))
+  (action/select-action [{:keys [building]} state]
+    (assoc state :mouse-mode [:build building])))
+
+(defn ->unit [x y]
+  {:uid (core/get-uid)
+   :x x
+   :y y
+   :pv 100
+   :pv-max 100
+   :available-actions [(Build. :house) (Build. :mine) (Build. :tower)]
+   :goals []
+   :waypoints []
+   :selected? false})
+
 (defn init-state []
   {:world (core/->world 74 74)
    :camera [0 0]
-   :units (into {} (for [unit [(core/->unit 3 4)
-                               (core/->unit 5 3)
-                               (core/->unit 6 3)
-                               (core/->unit 2 2)
-                               (core/->unit 7 4)
-                               (core/->unit 8 5)
-                               (core/->unit 5 4)
-                               (core/->unit 6 8)
-                               (core/->unit 7 8)
-                               (core/->unit 8 8)
-                               (core/->unit 9 8)
-                               (core/->unit 6 5)
-                               (core/->unit 7 5)
-                               (core/->unit 8 5)
-                               (core/->unit 9 5)
-                               (core/->unit 7 6)
-                               (core/->unit 6 6)
-                               (core/->unit 4 4)]]
+   :units (into {} (for [unit [(->unit 3 4)
+                               (->unit 5 3)
+                               (->unit 6 3)
+                               (->unit 2 2)
+                               (->unit 7 4)
+                               (->unit 8 5)
+                               (->unit 5 4)
+                               (->unit 6 8)
+                               (->unit 7 8)
+                               (->unit 8 8)
+                               (->unit 9 8)
+                               (->unit 6 5)
+                               (->unit 7 5)
+                               (->unit 8 5)
+                               (->unit 9 5)
+                               (->unit 7 6)
+                               (->unit 6 6)
+                               (->unit 4 4)]]
                      [(:uid unit) unit]))
    :world-updates []})
 
@@ -91,10 +109,10 @@
       {:canvas (selector canvas)
        :context (.getContext (selector canvas) "2d")})))
 
-(defn draw-tile! [ctx {:keys [world] :as state} x y size]
+(defn draw-tile! [ctx {:keys [mouse-mode world] :as state} x y size]
   (let [tile-color (cond
                      (core/obstacle? world x y) "gray"
-                     (game/hover? state x y) "green"
+                     (and mouse-mode (game/hover? state x y)) "green"
                      :else "#222")
         [x y] (to-game-canvas state [x y])]
     (g/render-item! ctx {:type :rect :x (+ 1 x) :y (+ 1 y)
@@ -102,8 +120,8 @@
     (g/render-item! ctx {:type :rect :x (+ 2 x) :y (+ 2 y)
                          :w (- size 4) :h (- size 4) :fill "black"})))
 
-
-(defn handle-mouse-game [{:keys [camera selector right-click] :as state}]
+(defn handle-mouse-game
+  [{:keys [camera selector mouse-mode right-click left-click] :as state}]
   (defn select-unit? [{:keys [x y] :as u}]
     (let [{:keys [x1 y1 x2 y2]} selector
           [x1 x2] [(min x1 x2) (max x1 x2)]
@@ -117,16 +135,16 @@
       (and (io/mouse-pressed? :left) (not (io/mouse-pressed? :right)))
       (if selector
         (update state :selector #(assoc % :x2 x :y2 y))
-        (-> state
-          (assoc :left-click [wx wy])
-          (update :selector #(assoc % :x1 x :y1 y :x2 x :y2 y))
-          (dissoc :selected)))
+        (let [state (assoc state :left-click [wx wy])]
+          (if mouse-mode
+            state
+            (update state :selector #(assoc % :x1 x :y1 y :x2 x :y2 y)))))
       (and (io/mouse-pressed? :right) (not (io/mouse-pressed? :left)))
       (if (not right-click)
         (assoc state :right-click [wx wy])
         state)
       :default
-      (if selector
+      (if left-click
         (game/end-game-left-click state select-unit?)
         (if right-click
           (game/end-game-right-click state)
@@ -177,6 +195,15 @@
         (handle-mouse)
         (game/redraw-visible))))
 
+(defmulti draw-hover! (fn [_ {:keys [mouse-mode]}] (first mouse-mode)))
+(defmethod draw-hover! :build
+  [ctx {:keys [mouse-mode hover] :as state}]
+  (let [[x y] hover
+        [x y] (to-game-canvas state [(+ 0.5 x) (+ 0.55 y)])]
+   (g/render-item! ctx {:type :text :color "green"
+                        :value (first (name (second mouse-mode))) :size 20
+                        :x x :y y})))
+
 (defn draw-game-elem! [state [update-type & args]]
   (cond (= update-type :cell)
         (let [[x y] args]
@@ -195,7 +222,7 @@
           (g/render-item! ctx {:type :rect :x x :y y
                                :w size :h size :fill color}))))
  
-(defn draw! [{:keys [world-updates world units selector]
+(defn draw! [{:keys [world-updates mouse-mode world units selector]
               :as state} contexts]
   (doseq [wu world-updates]
     (draw-game-elem! state wu)
@@ -214,7 +241,10 @@
                            :color "yellow"})))
       (g/render-item! (context "game")
                       {:type :circle :x x :y y :r 12 :fill color})))
-  (if-let [{:keys [x1 y1 x2 y2]} selector]
+  (when mouse-mode
+    (draw-hover! (context "game") state))
+
+  (when-let [{:keys [x1 y1 x2 y2]} selector]
     (g/render-item! (context "game")
                     {:type :box :x x1 :y y1
                      :w (- x2 x1) :h (- y2 y1)
@@ -256,8 +286,22 @@
 
 (defn action-box []
   [:div {:style {:margin-top 5 :background-color "black"
+                 :display "flex"
+                 :flex-wrap "wrap"
+                 :justify-content "stretch"
+                 :align-content "stretch"
                  :flex-grow 1}}
-    [:button "Coucou"]])
+   (let [[unit & more] (game/get-selected-units @state)
+         actions (:available-actions unit)]
+     (when (and actions (not more))
+       (for [a actions]
+         ^{:key (hash a)}
+          [:button
+           {:onClick #(swap! state (fn [s] (action/select-action a s)))
+            :style {:padding 10 :margin 0 :width 111}}
+           (action/action-name a)])))])
+         
+       
 
 (defn rts-app [props]
   [:div {:style {:color "white"}}
@@ -280,7 +324,15 @@
                 :height 223
                 :style {:background-color "#111" :width 223 :height 223}}]
       [profile-box]
-      [action-box]]
+      [action-box]
+      (when (:mouse-mode @state)
+        [:div {:style {:padding 5 :margin 0 :flex-grow 0.1
+                       :display "flex"
+                       :justify-content "flex-end"
+                       :background-color "black"}}
+         [:button
+          {:onClick #(swap! state dissoc :mouse-mode)}
+          "X"]])]
      [:canvas {:id "game" :width 611 :height 480
                :style {:background-color "black"
                        :min-width 611
