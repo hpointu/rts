@@ -3,9 +3,10 @@
             [hpointu.rts.input :as io]
             [hpointu.rts.core :as core]
             [hpointu.rts.action :as action]
-            [hpointu.rts.utils :refer [collides?]]
+            [hpointu.rts.game :as game]
             [reagent.core :as r]
             [reagent.dom :as rdom]
+            [hpointu.rts.utils :refer [collides?]]
             [cljs.pprint]))
 
 
@@ -20,56 +21,26 @@
 (defn init-state []
   {:world (core/->world 74 74)
    :camera [0 0]
-   :units [(core/->unit 3 4)
-           (core/->unit 5 3)
-           (core/->unit 6 3)
-           (core/->unit 2 2)
-           (core/->unit 7 4)
-           (core/->unit 8 5)
-           (core/->unit 5 4)
-           (core/->unit 6 8)
-           (core/->unit 7 8)
-           (core/->unit 8 8)
-           (core/->unit 9 8)
-           (core/->unit 6 5)
-           (core/->unit 7 5)
-           (core/->unit 8 5)
-           (core/->unit 9 5)
-           (core/->unit 7 6)
-           (core/->unit 6 6)
-           (core/->unit 4 4)]
+   :units (into {} (for [unit [(core/->unit 3 4)
+                               (core/->unit 5 3)
+                               (core/->unit 6 3)
+                               (core/->unit 2 2)
+                               (core/->unit 7 4)
+                               (core/->unit 8 5)
+                               (core/->unit 5 4)
+                               (core/->unit 6 8)
+                               (core/->unit 7 8)
+                               (core/->unit 8 8)
+                               (core/->unit 9 8)
+                               (core/->unit 6 5)
+                               (core/->unit 7 5)
+                               (core/->unit 8 5)
+                               (core/->unit 9 5)
+                               (core/->unit 7 6)
+                               (core/->unit 6 6)
+                               (core/->unit 4 4)]]
+                     [(:uid unit) unit]))
    :world-updates []})
-
-(defn visible? [{:keys [camera]} x y]
-  (let [[cx cy] camera]
-    (and (< x (+ cx 18))
-         (< y (+ cy 14)))))
-
-(defn visible-range [[cx cy :as camera]]
-  (for [x (range (int cx) (int (+ cx 18)))
-        y (range (int cy) (int (+ cy 14)))]
-    [x y]))
-
-(defn hover? [{:keys [hover]} x y]
-  (= hover [x y]))
-
-(defn cell-redraw [[x y]]
-  [:cell x y])
-
-(defn redraw-world [{:keys [world] :as state}]
-  (let [elems (for [x (range (core/world-width world))
-                    y (range (core/world-height world))]
-                (cell-redraw [x y]))]
-    (-> state
-        (update :world-updates conj [:clear])
-        (update :world-updates into elems))))
-
-(defn redraw-visible [{:keys [world camera] :as state}]
-  (let [elems (for [[x y] (visible-range camera)]
-                (cell-redraw [x y]))]
-    (-> state
-        (update :world-updates conj [:clear])
-        (update :world-updates into elems))))
 
 (defn to-game-canvas [{:keys [camera]} [x y]]
   (let [[cx cy] camera]
@@ -123,7 +94,7 @@
 (defn draw-tile! [ctx {:keys [world] :as state} x y size]
   (let [tile-color (cond
                      (core/obstacle? world x y) "gray"
-                     (hover? state x y) "green"
+                     (game/hover? state x y) "green"
                      :else "#222")
         [x y] (to-game-canvas state [x y])]
     (g/render-item! ctx {:type :rect :x (+ 1 x) :y (+ 1 y)
@@ -131,83 +102,15 @@
     (g/render-item! ctx {:type :rect :x (+ 2 x) :y (+ 2 y)
                          :w (- size 4) :h (- size 4) :fill "black"})))
 
-(defn update-hover [{:keys [hover world camera] :as state} x y]
-  (let [[cx cy] camera
-        new-hover (when (core/in-world? world x y) [x y])]
-    (-> state
-        (assoc :hover new-hover)
-        (update :world-updates into (map cell-redraw (keep identity [new-hover hover]))))))
-
-(defn set-cell [{:keys [hover] :as state} v]
-  (let [[x y] hover]
-    (update state :world core/set-world-cell x y v)))
-
-(defn clamp-camera [{:keys [world] :as state}]
-  (let [max-x (- (core/world-width world) 17.4)
-        max-y (- (core/world-height world) 13.6)
-        round (fn [f] (/ (js/Math.round (* 10 f)) 10))
-        fixed (fn [camera] (into [] (map round camera)))]
-    (-> state
-      (update-in [:camera 0] min max-x)
-      (update-in [:camera 0] max 0)
-      (update-in [:camera 1] min max-y)
-      (update-in [:camera 1] max 0)
-      (update :camera fixed))))
-
-(defn move-camera [state dx dy]
-  (let [speed 0.3]
-    (-> state
-        (update-in [:camera 0] + (* speed dx))
-        (update-in [:camera 1] + (* speed dy))
-        (clamp-camera))))
-
-(defn select-units [{:keys [selector] :as state}]
-  (let [{:keys [x1 y1 x2 y2]} selector
-        [x1 x2] [(min x1 x2) (max x1 x2)]
-        [y1 y2] [(min y1 y2) (max y1 y2)]
-        rect [x1 y1 (- x2 x1) (- y2 y1)]]
-
-    (defn select-unit? [{:keys [x y] :as u}]
-      (collides? (unit-aabb state u) rect))
-
-    (defn assing-select-id [select-fn units]
-      (loop [result []
-             left units
-             cpt 0]
-        (let [[u & more] left
-              select? (select-fn u)]
-          (if u
-            (recur
-              (conj result (assoc u :selected? (if select? cpt false)))
-              more
-              (if select? (inc cpt) cpt))
-            result))))
-
-    (update state :units #(assing-select-id select-unit? %))))
-  
-
-(defn end-game-left-click [state]
-  (-> state
-      (select-units)
-      (dissoc :selector)
-      (dissoc :left-click)))
-
-(defn end-game-right-click [{:keys [world right-click units] :as state}]
-
-  (defn set-unit-destination [targets {:keys [x y selected?] :as unit}]
-    (if selected?
-      (-> unit
-        (update :goals conj (action/walk (nth targets selected?))))
-      unit))
-
-  (let [size (count (filter :selected? units))
-        targets (core/get-free-zone world right-click size)]
-    (-> state
-        (update :units
-                #(into [] (map (fn [u] (set-unit-destination targets u)) %)))
-        (dissoc :right-click))))
 
 (defn handle-mouse-game [{:keys [camera selector right-click] :as state}]
+  (defn select-unit? [{:keys [x y] :as u}]
+    (let [{:keys [x1 y1 x2 y2]} selector
+          [x1 x2] [(min x1 x2) (max x1 x2)]
+          [y1 y2] [(min y1 y2) (max y1 y2)]
+          rect [x1 y1 (- x2 x1) (- y2 y1)]]
+      (collides? (unit-aabb state u) rect)))
+
   (let [[x y] (io/mouse-pos (get-game-canvas))
         [wx wy] (to-grid camera [x y])]
     (cond
@@ -224,9 +127,9 @@
         state)
       :default
       (if selector
-        (-> state (end-game-left-click))
+        (game/end-game-left-click state select-unit?)
         (if right-click
-          (-> state (end-game-right-click))
+          (game/end-game-right-click state)
           state)))))
     
 
@@ -236,7 +139,7 @@
       (-> state
           (assoc-in [:camera 0] (- x 9))
           (assoc-in [:camera 1] (- y 7))
-          (clamp-camera)))
+          (game/clamp-camera)))
     state))
 
 (defn handle-mouse [state]
@@ -250,38 +153,34 @@
   (cond-> state
     ;; Pressing W
     (and hover (io/key-pressed? "KeyW"))
-    (set-cell :w)
+    (game/set-cell :w)
     ;; Pressing G
     (and hover (io/key-pressed? "KeyG"))
-    (set-cell :g)
+    (game/set-cell :g)
     ;; Pressing arrows
     (some io/key-pressed? #{"ArrowLeft" "ArrowRight" "ArrowUp" "ArrowDown"})
-    (move-camera (cond (io/key-pressed? "ArrowLeft") -1
-                       (io/key-pressed? "ArrowRight") 1
-                       :else 0)
+    (game/move-camera (cond (io/key-pressed? "ArrowLeft") -1
+                            (io/key-pressed? "ArrowRight") 1
+                            :else 0)
                  (cond (io/key-pressed? "ArrowUp") -1
                       (io/key-pressed? "ArrowDown") 1
                       :else 0))))
 
-(defn move-units [{:keys [units] :as state} dt]
-  (assoc state
-         :units (into [] (map #(action/update-actor state % dt) units))))
    
-(defn update-state [{:keys [world camera] :as state} dt] state
+(defn update-state [{:keys [world camera] :as state} dt]
   (let [canvas (get-game-canvas)
         [x y] (map (comp int +) camera (to-world (io/mouse-pos canvas)))]
     (-> state
-        (move-units dt)
-        (update-hover x y)
+        (action/update-actors dt)
+        (game/update-hover x y)
         (handle-keys)
         (handle-mouse)
-        (redraw-visible))))
-
+        (game/redraw-visible))))
 
 (defn draw-game-elem! [state [update-type & args]]
   (cond (= update-type :cell)
         (let [[x y] args]
-          (when (visible? state x y)
+          (when (game/visible? state x y)
             (draw-tile! (context "game") state x y SIZE)))
         (= update-type :clear)
         (let [canvas (get-game-canvas)]
@@ -301,8 +200,8 @@
   (doseq [wu world-updates]
     (draw-game-elem! state wu)
     (draw-minimap-elem! (:context (contexts :minimap-off)) state wu))
-  (doseq [{:keys [x y selected?] :as u} units
-          :when (visible? state x y)]
+  (doseq [{:keys [x y selected?] :as u} (vals units)
+          :when (game/visible? state x y)]
     (let [[x y] (map + (to-game-canvas state [x y])
                      [(/ SIZE 2) (/ SIZE 2)])
           color "#0cf"]
@@ -326,7 +225,7 @@
                 (.-width (:canvas mmap)) (.-height (:canvas mmap)))
     (.drawImage (:context mmap)
                 (:canvas (contexts :minimap-off)) 0 0)
-    (doseq [{:keys [x y selected?]} units]
+    (doseq [{:keys [x y selected?]} (vals units)]
       (let [[x y] (to-minimap-canvas [x y] 3)]
         (g/render-item! (context "minimap")
                         {:type :rect :x x :y y :w 3 :h 3
@@ -345,9 +244,21 @@
         (swap! frame-counter inc))))
 
 (defn get-debug-content []
-  (str "FPS: " @fps)); " - " @io/keymap " - " @io/mouse "\n")
-;       (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
-;                                             (dissoc :world-updates)))
+  (str "FPS: " @fps " - " @io/keymap " - " @io/mouse "\n"
+        (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
+                                              (dissoc :world-updates)
+                                              (dissoc :units))))))
+
+(defn profile-box []
+  [:div {:style {:margin-top 5 :background-color "black"
+                 :flex-grow 1}}
+    [:span "Coucou"]])
+
+(defn action-box []
+  [:div {:style {:margin-top 5 :background-color "black"
+                 :flex-grow 1}}
+    [:button "Coucou"]])
+
 (defn rts-app [props]
   [:div {:style {:color "white"}}
    [:h2 {:style {:margin "0 0 5px 0"
@@ -368,20 +279,8 @@
                 :width 223
                 :height 223
                 :style {:background-color "#111" :width 223 :height 223}}]
-      [:div {:style {:background-color "black"
-                     :font-family "mono"
-                     :flex-grow 1
-                     :padding 15 :margin-top 5}}
-       [:h4 {:style {:margin 0}} "TODO:"]
-       [:ul {:style {:font-size "0.8em" :margin 0 :padding-left 20}}
-        [:li {:style {:text-decoration "line-through" :color "#888"}} "Minimap"]
-        [:li {:style {:text-decoration "line-through" :color "#888"}} "Camera movement"]
-        [:li {:style {:text-decoration "line-through" :color "#888"}} "Entities"]
-        [:li {:style {:text-decoration "line-through" :color "#888"}} "Mouse clicks..."]
-        [:li {:style {:text-decoration "line-through" :color "#888"}} "Path finding"]
-        [:li {:style {:text-decoration "initial"}} "Multiple units, One goal"]
-        [:li {:style {:text-decoration "initial"}} "Stop scrolling on keys"]
-        [:li {:style {:text-decoration "initial"}} "Gameplay elements"]]]]
+      [profile-box]
+      [action-box]]
      [:canvas {:id "game" :width 611 :height 480
                :style {:background-color "black"
                        :min-width 611
@@ -401,7 +300,7 @@
 
 (defn ^:dev/after-load start []
   (println (str "Starting..."))
-  (swap! state redraw-world)
+  (swap! state game/redraw-world)
   (rdom/render [rts-app] (js/document.getElementById "app"))
   (let [contexts (init-contexts)]
     (swap! timers conj (js/setInterval #(tick! contexts) 16.66)))

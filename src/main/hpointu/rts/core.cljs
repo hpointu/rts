@@ -91,6 +91,8 @@
   {:uid (get-uid)
    :x x
    :y y
+   :pv 100
+   :pv-max 100
    :goals []
    :waypoints []
    :selected? false})

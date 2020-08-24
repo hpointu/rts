@@ -1,6 +1,7 @@
 (ns hpointu.rts.app-test
-  (:require [cljs.test :refer [deftest is]]
+  (:require [cljs.test :refer [deftest testing are is]]
             [hpointu.rts.core :as core]
+            [hpointu.rts.action :as action]
             [hpointu.rts.utils :as utils]))
 
 (deftest test-obstacles
@@ -43,7 +44,7 @@
   (is (> 0.0000000000001 (- 1 (utils/distance [0 0] (utils/normalize [7 3]))))))
 
 
-(deftest free-zone []
+(deftest free-zone
   (let [world [[:g :w :w :g :g]
                [:g :g :g :g :g]
                [:g :g :w :g :g]
@@ -52,3 +53,22 @@
     (is (= [[1 1]] (core/get-free-zone world [1 1] 1)))
     (is (= #{[1 1] [0 0] [0 1] [0 2] [1 2] [2 1] [3 1]}
            (set (core/get-free-zone world [1 1] 7))))))
+
+
+(deftest actors
+  (testing "waiting"
+    (let [state {:units {1 {:goals [[:wait 10]]}}}
+          new-state (action/update-actors state 2)]
+      (is (= [:wait 8] (get-in new-state [:units 1 :goals 0])))))
+
+  (testing "walking"
+    (let [state {:units {1 {:x 1 :y 1 :goals [[:walk [2 2]]]
+                            :waypoints [[2 2]]}}
+                 :world [[:g :g :g]
+                         [:g :g :g]
+                         [:g :g :g]]}
+          new-state (action/update-actors state 100)]
+      (are [k v] (= (get-in new-state [:units 1 k]) v)
+           :x 1.3
+           :y 1.3))))
+          
