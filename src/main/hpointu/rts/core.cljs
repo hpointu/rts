@@ -1,6 +1,11 @@
 (ns hpointu.rts.core
   (:require [hpointu.rts.utils :refer [distance]]))
 
+(def uids (atom 0))
+(defn get-uid []
+  (swap! uids inc)
+  @uids)
+
 (defn world-width [world]
   (count (get world 0)))
 
@@ -54,12 +59,38 @@
      [(dec x) (inc y)] [x (inc y)] [(inc x) (inc y)]]))
 
 
+(defn get-free-zone [world pos size]
+
+  (defn reducer [{:keys [visited zone] :as acc} n]
+    (if (or (contains? visited n)
+            (>= (count zone) size))
+      acc
+      (let [[x y] n
+            up (-> acc
+                  (update :limit conj n)
+                  (update :visited conj n))]
+        (if (obstacle? world x y)
+          up
+          (update up :zone conj n)))))
+
+  (loop [limit #queue [pos]
+         visited #{pos}
+         zone [pos]]
+    (if (>= (count zone) size)
+      (vec (take size zone))
+      (let [current (peek limit)
+            limit (pop limit)
+            neighs (sort-by #(distance pos %) (neighbours world current))
+            initial {:limit limit :visited visited :zone zone}
+            {:keys [limit visited zone] :as acc}
+            (reduce reducer initial neighs)]
+        (recur limit visited zone)))))
+
+
 (defn ->unit [x y]
-  {:x x
+  {:uid (get-uid)
+   :x x
    :y y
    :goals []
    :waypoints []
    :selected? false})
-
-(defn add-waypoint [unit x y]
-  (update unit :waypoints conj [x y]))

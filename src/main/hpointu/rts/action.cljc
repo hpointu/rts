@@ -7,16 +7,44 @@
   [:walk pos])
 
 
+(defn units-on-pos [{:keys [units]} [x y]]
+  (filter #(and (= (int x) (int (:x %1)))
+                (= (int y) (int (:y %1))))
+          units))
+
+(defn busy-tile? [{:keys [world units] :as state} [x y] exclude-uid]
+  (let [bee (first (units-on-pos state [x y]))]
+    (if (= (:uid bee) exclude-uid)
+      nil
+      bee)))
+
 (defmulti act (fn [state actor action dt] (first action)))
+
+(defmethod act :wait [state unit action dt]
+  unit)
 
 (defmethod act :walk
   [{:keys [world] :as state}
-   {:keys [x y waypoints] :as unit}
+   {:keys [x y waypoints uid] :as unit}
    [_ target]
    dt]
 
   (defn arrived? [{:keys [x y] :as unit} dest]
     (< (distance [x y] dest) 0.05))
+
+  (defn cost-fn [from to]
+    (core/cost world from to))
+
+  (defn get-path []
+    (let [neighbours-fn #(core/neighbours world %1)]
+      (path (map int [x y]) target cost-fn neighbours-fn)))
+
+  (defn calculate-new-path [wait-tile]
+    (if-let [path (get-path)]
+      (assoc unit :waypoints path)
+      (update unit :goals (if wait-tile
+                            #(into [[:wait]] %)
+                            (comp vec rest)))))
 
   (let [speed 3
         dt (/ dt 1000)
@@ -33,19 +61,16 @@
             (assoc :waypoints (vec more))
             ; if no more waypoints, go to next goal
             (update :goals #(if (not more) (into [] (rest %1)) %1))))
-      ; there's a wp :
-      wp (-> unit
-             (update :x + dx)
-             (update :y + dy))
-
+      ; there's a wp further away :
+      wp
+      (if (apply core/obstacle? world wp)
+        (calculate-new-path wp)
+        (-> unit
+            (update :x + dx)
+            (update :y + dy)))
       ; there are no wp yet?
       (not wp)
-      (let [cost-fn #(core/cost world %1 %2)
-            neighbours-fn #(core/neighbours world %1)
-            path (path (map int [x y]) target cost-fn neighbours-fn)]
-        (if path
-          (assoc unit :waypoints path)
-          (update unit :goals (comp vec rest)))))))
+      (calculate-new-path nil))))
       
 (defn update-actor [state unit dt]
   (if-let [current-goal (first (:goals unit))]

@@ -20,7 +20,9 @@
 (defn init-state []
   {:world (core/->world 74 74)
    :camera [0 0]
-   :units [(core/->unit 3 4)]
+   :units [(core/->unit 3 4)
+           (core/->unit 5 3)
+           (core/->unit 4 4)]
    :world-updates []})
 
 (defn visible? [{:keys [camera]} x y]
@@ -121,9 +123,9 @@
         (assoc :hover new-hover)
         (update :world-updates into (map cell-redraw (keep identity [new-hover hover]))))))
 
-(defn add-wall [{:keys [hover] :as state}]
+(defn set-cell [{:keys [hover] :as state} v]
   (let [[x y] hover]
-    (update state :world core/set-world-cell x y :w)))
+    (update state :world core/set-world-cell x y v)))
 
 (defn clamp-camera [{:keys [world] :as state}]
   (let [max-x (- (core/world-width world) 17.4)
@@ -149,9 +151,25 @@
         [x1 x2] [(min x1 x2) (max x1 x2)]
         [y1 y2] [(min y1 y2) (max y1 y2)]
         rect [x1 y1 (- x2 x1) (- y2 y1)]]
-    (defn select-unit [{:keys [x y] :as u}]
-      (assoc u :selected? (collides? (unit-aabb state u) rect)))
-    (update state :units #(into [] (map select-unit %)))))
+
+    (defn select-unit? [{:keys [x y] :as u}]
+      (collides? (unit-aabb state u) rect))
+
+    (defn assing-select-id [select-fn units]
+      (loop [result []
+             left units
+             cpt 0]
+        (let [[u & more] left
+              select? (select-fn u)]
+          (if u
+            (recur
+              (conj result (assoc u :selected? (if select? cpt false)))
+              more
+              (if select? (inc cpt) cpt))
+            result))))
+
+    (update state :units #(assing-select-id select-unit? %))))
+  
 
 (defn end-game-left-click [state]
   (-> state
@@ -159,17 +177,20 @@
       (dissoc :selector)
       (dissoc :left-click)))
 
-(defn end-game-right-click [{:keys [world right-click] :as state}]
-  (defn set-unit-destination [{:keys [x y selected?] :as unit}]
+(defn end-game-right-click [{:keys [world right-click units] :as state}]
+
+  (defn set-unit-destination [targets {:keys [x y selected?] :as unit}]
     (if selected?
-      (let [target right-click]
-        (-> unit
-          (update :goals conj (action/walk target))))
+      (-> unit
+        (update :goals conj (action/walk (nth targets selected?))))
       unit))
 
-  (-> state
-      (update :units #(into [] (map set-unit-destination %)))
-      (dissoc :right-click)))
+  (let [size (count (filter :selected? units))
+        targets (core/get-free-zone world right-click size)]
+    (-> state
+        (update :units
+                #(into [] (map (fn [u] (set-unit-destination targets u)) %)))
+        (dissoc :right-click))))
 
 (defn handle-mouse-game [{:keys [camera selector right-click] :as state}]
   (let [[x y] (io/mouse-pos (get-game-canvas))
@@ -214,7 +235,10 @@
   (cond-> state
     ;; Pressing W
     (and hover (io/key-pressed? "KeyW"))
-    (add-wall)
+    (set-cell :w)
+    ;; Pressing G
+    (and hover (io/key-pressed? "KeyG"))
+    (set-cell :g)
     ;; Pressing arrows
     (some io/key-pressed? #{"ArrowLeft" "ArrowRight" "ArrowUp" "ArrowDown"})
     (move-camera (cond (io/key-pressed? "ArrowLeft") -1
