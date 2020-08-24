@@ -22,6 +22,21 @@
    :camera [0 0]
    :units [(core/->unit 3 4)
            (core/->unit 5 3)
+           (core/->unit 6 3)
+           (core/->unit 2 2)
+           (core/->unit 7 4)
+           (core/->unit 8 5)
+           (core/->unit 5 4)
+           (core/->unit 6 8)
+           (core/->unit 7 8)
+           (core/->unit 8 8)
+           (core/->unit 9 8)
+           (core/->unit 6 5)
+           (core/->unit 7 5)
+           (core/->unit 8 5)
+           (core/->unit 9 5)
+           (core/->unit 7 6)
+           (core/->unit 6 6)
            (core/->unit 4 4)]
    :world-updates []})
 

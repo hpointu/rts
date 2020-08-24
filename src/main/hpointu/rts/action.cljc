@@ -45,13 +45,17 @@
       (update unit :goals (if wait-tile
                             #(into [[:wait]] %)
                             (comp vec rest)))))
+  (defn dir [a b]
+    (if (< a b) 1 -1))
 
   (let [speed 3
         dt (/ dt 1000)
         [wp & more] waypoints
-        [dx dy] (normalize (map - wp [x y]))
-        [dx dy] (map * [speed speed] [dx dy])
-        [dx dy] (map * [dt dt] [dx dy])]
+        [tx ty] wp
+        [max-dx max-dy] [(- tx x) (- ty y)]
+        [dx dy] (map #(* speed dt %) [(dir x tx) (dir y ty)])
+        [dx dy] [(min-key js/Math.abs max-dx dx) 
+                 (min-key js/Math.abs max-dy dy)]]
     (cond
       ; arrived to wp
       (arrived? unit wp)
