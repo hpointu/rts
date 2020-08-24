@@ -1,7 +1,6 @@
 (ns hpointu.rts.game
   (:require [hpointu.rts.core :as core]
-            [hpointu.rts.action :as action]
-            [hpointu.rts.utils :refer [collides?]]))
+            [hpointu.rts.action :as action]))
 
 (def VIEW_W 18)
 (def VIEW_H 14)
