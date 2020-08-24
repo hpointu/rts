@@ -330,9 +330,9 @@
         (swap! frame-counter inc))))
 
 (defn get-debug-content []
-  (str "FPS: " @fps " - " @io/keymap " - " @io/mouse "\n"
-       (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
-                                             (dissoc :world-updates))))))
+  (str "FPS: " @fps)); " - " @io/keymap " - " @io/mouse "\n")
+;       (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
+;                                             (dissoc :world-updates)))
 (defn rts-app [props]
   [:div {:style {:color "white"}}
    [:h2 {:style {:margin "0 0 5px 0"
