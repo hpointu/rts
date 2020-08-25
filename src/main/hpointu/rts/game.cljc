@@ -22,8 +22,14 @@
 (defn cell-redraw [[x y]]
   [:cell x y])
 
-(defn busy-cell? [{:keys [units] :as state} pos]
-  (some #(= pos ((juxt :x :y) %)) (vals units)))
+(defn busy-cell?
+  ([state pos]
+   (busy-cell? state pos (fn [_] false)))
+
+  ([{:keys [units] :as state} pos ignore-pred]
+   (some
+     (fn [u] (= ((comp vec #(map js/Math.round %) (juxt :x :y)) u) pos))
+     (remove ignore-pred (vals units)))))
 
 (defn free-tiles? [state tiles]
   (not-any? #(or (core/obstacle? (:world state) %1)

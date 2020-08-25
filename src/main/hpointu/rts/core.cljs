@@ -45,6 +45,7 @@
     (let [[x y] pos]
       (if pos (recur (assoc-in w [y x] v) more) w))))
 
+(defn unit-moving? [{:keys [waypoints]}] (seq waypoints))
 
 (defn obstacle?
   ([world x y]

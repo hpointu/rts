@@ -23,12 +23,12 @@
     (let [neighbours-fn #(core/neighbours world %1)]
       (path (map int [x y]) target cost-fn neighbours-fn)))
 
-  (defn calculate-new-path [{:keys [x y] :as unit} wait-tile]
+  (defn calculate-new-path [{:keys [x y] :as unit}]
     (if-let [path (get-path x y)]
       (assoc unit :waypoints path)
-      (update unit :goals (if wait-tile
-                            #(into [[:wait 1000]] %)
-                            (comp vec rest)))))
+      (-> unit
+         (assoc :waypoints [])
+         (update :goals #(into [[:wait 1000]] %)))))
   (defn dir [a b]
     (if (< a b) 1 -1))
 
@@ -53,12 +53,12 @@
         ; there's a wp further away :
         wp
         (if (apply core/obstacle? world wp)
-          (calculate-new-path unit wp)
+          (calculate-new-path unit)
           (-> unit
               (update :x + dx)
               (update :y + dy)))
         ; there are no wp yet?
         (not wp)
-        (calculate-new-path unit nil))))
+        (calculate-new-path unit))))
 
   (update-in state [:units uid] move-unit))
