@@ -1,5 +1,17 @@
 (ns hpointu.rts.core
   (:require [hpointu.rts.utils :refer [distance]]))
+      
+(defmulti ->building (fn [btype] btype))
+
+(defrecord Build [building])
+
+(defprotocol UiAction
+  (action-name [this])
+  (select-action [this state]))
+
+(defprotocol MouseMode
+  (draw-hover! [this ctx state])
+  (left-click-action [this state]))
 
 ;; TODO Probably move to game.cljc
 (def uids (atom 0))
@@ -27,13 +39,19 @@
   (get-in world [y x]))
 
 
-(defn set-world-cell [world x y v]
-  (assoc-in world [y x] v))
+(defn set-world-cells [world positions v]
+  (loop [w world
+         [pos & more] positions]
+    (let [[x y] pos]
+      (if pos (recur (assoc-in w [y x] v) more) w))))
 
 
-(defn obstacle? [world x y]
-  (let [obstacles #{:w}]
-    (some? (obstacles (get-in world [y x])))))
+(defn obstacle?
+  ([world x y]
+   (let [obstacles #{:w}]
+     (some? (obstacles (get-in world [y x])))))
+  ([world [x y]]
+   (obstacle? world x y)))
 
 
 (defn cost [world from to]
@@ -42,8 +60,8 @@
       ##Inf
       (distance from to))))
 
-(defn in-world?
 
+(defn in-world?
   ([world [x y]]
    (in-world? world x y))
 
@@ -59,6 +77,15 @@
      [(dec x) y]                   [(inc x) y]
      [(dec x) (inc y)] [x (inc y)] [(inc x) (inc y)]]))
 
+
+(defn tiles [pos w h]
+  (let [offsets (for [x (range w) y (range h)] [x y])
+        [x y] pos
+        add-offset (fn [[ox oy]] [(+ ox x) (+ oy y)])]
+    (vec (map add-offset offsets))))
+
+(defn building-tiles [{:keys [size pos]}]
+  (tiles pos size size))
 
 (defn get-free-zone [world pos size]
 
@@ -86,3 +113,5 @@
             {:keys [limit visited zone] :as acc}
             (reduce reducer initial neighs)]
         (recur limit visited zone)))))
+
+(defrecord Building [btype pos])

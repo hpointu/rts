@@ -1,7 +1,7 @@
 (ns hpointu.rts.app
-  (:require [hpointu.rts.graphics :as g]
-            [hpointu.rts.input :as io]
+  (:require [hpointu.rts.input :as io]
             [hpointu.rts.core :as core]
+            [hpointu.rts.drawing :as drawing]
             [hpointu.rts.action :as action]
             [hpointu.rts.game :as game]
             [reagent.core :as r]
@@ -10,6 +10,7 @@
             [cljs.pprint]))
 
 
+(defonce debug? (r/atom false))
 (def current-time (atom (.now js/Date)))
 (defonce state (r/atom {}))
 
@@ -19,19 +20,15 @@
 
 (def SIZE 35)
 
-(defrecord Build [building]
-  action/UiAction
-  (action/action-name [{:keys [building]}] (name building))
-  (action/select-action [{:keys [building]} state]
-    (assoc state :mouse-mode [:build building])))
-
 (defn ->unit [x y]
   {:uid (core/get-uid)
    :x x
    :y y
    :pv 100
    :pv-max 100
-   :available-actions [(Build. :house) (Build. :mine) (Build. :tower)]
+   :available-actions [(core/->Build :house)
+                       (core/->Build :farm)
+                       (core/->Build :hotel)]
    :goals []
    :waypoints []
    :selected? false})
@@ -39,33 +36,28 @@
 (defn init-state []
   {:world (core/->world 74 74)
    :camera [0 0]
-   :units (into {} (for [unit [(->unit 3 4)
-                               (->unit 5 3)
-                               (->unit 6 3)
+   :buildings []
+   :units (into {} (for [unit [
                                (->unit 2 2)
-                               (->unit 7 4)
-                               (->unit 8 5)
+                               (->unit 3 4)
+                               (->unit 4 4)
+                               (->unit 5 3)
                                (->unit 5 4)
-                               (->unit 6 8)
-                               (->unit 7 8)
-                               (->unit 8 8)
-                               (->unit 9 8)
+                               (->unit 6 3)
                                (->unit 6 5)
-                               (->unit 7 5)
-                               (->unit 8 5)
-                               (->unit 9 5)
-                               (->unit 7 6)
                                (->unit 6 6)
-                               (->unit 4 4)]]
+                               (->unit 6 8)
+                               (->unit 7 4)
+                               (->unit 7 5)
+                               (->unit 7 6)
+                               (->unit 7 8)
+                               (->unit 8 5)
+                               (->unit 8 8)
+                               (->unit 8 9)
+                               (->unit 9 5)
+                               (->unit 9 8)]]
                      [(:uid unit) unit]))
    :world-updates []})
-
-(defn to-game-canvas [{:keys [camera]} [x y]]
-  (let [[cx cy] camera]
-    (into [] (map int [(* SIZE (- x cx)) (* SIZE (- y cy))]))))
-
-(defn to-minimap-canvas [[x y] size]
-  [(* size x) (* size y)])
 
 (defn to-world
   ([pos]
@@ -75,10 +67,6 @@
 
 (defn to-grid [camera pos]
   (map (comp int +) camera (to-world pos)))
-
-(defn unit-aabb [state {:keys [x y] :as unit}]
-  (let [[x y] (to-game-canvas state [x y])]
-    (into [] (map #(+ 5 %) [x y 20 20])))) 
 
 (defn get-game-canvas []
   (js/document.getElementById "game"))
@@ -104,21 +92,13 @@
                 :minimap minimap
                 :minimap-off (doto (js/document.createElement "canvas")
                                (aset "width" (.-width minimap))
-                               (aset "height" (.-height minimap)))}]
+                               (aset "height" (.-height minimap)))}
+        contexts (into {} (for [[k v] canvas] [k (.getContext v "2d")]))]
     (fn [selector]
       {:canvas (selector canvas)
-       :context (.getContext (selector canvas) "2d")})))
+       :context (selector contexts)})))
 
-(defn draw-tile! [ctx {:keys [mouse-mode world] :as state} x y size]
-  (let [tile-color (cond
-                     (core/obstacle? world x y) "gray"
-                     (and mouse-mode (game/hover? state x y)) "green"
-                     :else "#222")
-        [x y] (to-game-canvas state [x y])]
-    (g/render-item! ctx {:type :rect :x (+ 1 x) :y (+ 1 y)
-                         :w (- size 2) :h (- size 2) :fill tile-color})
-    (g/render-item! ctx {:type :rect :x (+ 2 x) :y (+ 2 y)
-                         :w (- size 4) :h (- size 4) :fill "black"})))
+
 
 (defn handle-mouse-game
   [{:keys [camera selector mouse-mode right-click left-click] :as state}]
@@ -127,7 +107,7 @@
           [x1 x2] [(min x1 x2) (max x1 x2)]
           [y1 y2] [(min y1 y2) (max y1 y2)]
           rect [x1 y1 (- x2 x1) (- y2 y1)]]
-      (collides? (unit-aabb state u) rect)))
+      (collides? (drawing/unit-aabb state u) rect)))
 
   (let [[x y] (io/mouse-pos (get-game-canvas))
         [wx wy] (to-grid camera [x y])]
@@ -168,116 +148,46 @@
         :default state))
 
 (defn handle-keys [{:keys [hover] :as state}]
-  (cond-> state
-    ;; Pressing W
-    (and hover (io/key-pressed? "KeyW"))
-    (game/set-cell :w)
-    ;; Pressing G
-    (and hover (io/key-pressed? "KeyG"))
-    (game/set-cell :g)
-    ;; Pressing arrows
-    (some io/key-pressed? #{"ArrowLeft" "ArrowRight" "ArrowUp" "ArrowDown"})
-    (game/move-camera (cond (io/key-pressed? "ArrowLeft") -1
-                            (io/key-pressed? "ArrowRight") 1
-                            :else 0)
-                 (cond (io/key-pressed? "ArrowUp") -1
-                      (io/key-pressed? "ArrowDown") 1
-                      :else 0))))
+  (let [cam-keys #{"ArrowLeft" "ArrowRight"
+                   "ArrowUp" "ArrowDown"}]
+    (cond-> state
+      ;; Pressing W
+      (and hover (io/key-pressed? "KeyW"))
+      (game/set-cell :w)
+      ;; Pressing G
+      (and hover (io/key-pressed? "KeyG"))
+      (game/set-cell :g)
+      ;; Pressing arrows
+      (some io/key-pressed? cam-keys)
+      (game/move-camera (cond (io/key-pressed? "ArrowLeft") -1
+                              (io/key-pressed? "ArrowRight") 1
+                              :else 0)
+                        (cond (io/key-pressed? "ArrowUp") -1
+                              (io/key-pressed? "ArrowDown") 1
+                              :else 0)))))
 
-   
 (defn update-state [{:keys [world camera] :as state} dt]
   (let [canvas (get-game-canvas)
-        [x y] (map (comp int +) camera (to-world (io/mouse-pos canvas)))]
+        [x y] (to-grid camera (io/mouse-pos canvas))]
     (-> state
-        (action/update-actors dt)
+        (game/update-actors dt)
         (game/update-hover x y)
         (handle-keys)
         (handle-mouse)
         (game/redraw-visible))))
 
-(defmulti draw-hover! (fn [_ {:keys [mouse-mode]}] (first mouse-mode)))
-(defmethod draw-hover! :build
-  [ctx {:keys [mouse-mode hover] :as state}]
-  (let [[x y] hover
-        [x y] (to-game-canvas state [(+ 0.5 x) (+ 0.55 y)])]
-   (g/render-item! ctx {:type :text :color "green"
-                        :value (first (name (second mouse-mode))) :size 20
-                        :x x :y y})))
 
-(defn draw-game-elem! [state [update-type & args]]
-  (cond (= update-type :cell)
-        (let [[x y] args]
-          (when (game/visible? state x y)
-            (draw-tile! (context "game") state x y SIZE)))
-        (= update-type :clear)
-        (let [canvas (get-game-canvas)]
-          (.clearRect (context "game") 0 0 (.-width canvas) (.-height canvas)))))
-    
-(defn draw-minimap-elem! [ctx {:keys [world] :as state} [update-type & args]]
-  (cond (= update-type :cell)
-        (let [size 3
-              [x y] args
-              color (if (core/obstacle? world x y) "gray" "#111")
-              [x y] (to-minimap-canvas args size)]
-          (g/render-item! ctx {:type :rect :x x :y y
-                               :w size :h size :fill color}))))
- 
-(defn draw! [{:keys [world-updates mouse-mode world units selector]
-              :as state} contexts]
-  (doseq [wu world-updates]
-    (draw-game-elem! state wu)
-    (draw-minimap-elem! (:context (contexts :minimap-off)) state wu))
-  (doseq [{:keys [x y selected?] :as u} (vals units)
-          :when (game/visible? state x y)]
-    (let [[x y] (map + (to-game-canvas state [x y])
-                     [(/ SIZE 2) (/ SIZE 2)])
-          color "#0cf"]
-      (when selected?
-        (let [[x y w h] (unit-aabb state u)]
-          (g/render-item! (context "game")
-                          {:type :box
-                           :x (- x 3) :y (- y 3)
-                           :w (+ w 6) :h (+ h 6)
-                           :color "yellow"})))
-      (g/render-item! (context "game")
-                      {:type :circle :x x :y y :r 12 :fill color})))
-  (when mouse-mode
-    (draw-hover! (context "game") state))
+;; drawing bits, they deserve their own namespace I think  -- >8
+;; -- end of drawing bit -- >8
 
-  (when-let [{:keys [x1 y1 x2 y2]} selector]
-    (g/render-item! (context "game")
-                    {:type :box :x x1 :y y1
-                     :w (- x2 x1) :h (- y2 y1)
-                     :color "yellow"}))
-  (let [[cx cy] (:camera state)
-        mmap (contexts :minimap)]
-    (.clearRect (:context mmap) 0 0
-                (.-width (:canvas mmap)) (.-height (:canvas mmap)))
-    (.drawImage (:context mmap)
-                (:canvas (contexts :minimap-off)) 0 0)
-    (doseq [{:keys [x y selected?]} (vals units)]
-      (let [[x y] (to-minimap-canvas [x y] 3)]
-        (g/render-item! (context "minimap")
-                        {:type :rect :x x :y y :w 3 :h 3
-                         :fill (if selected? "yellow" "#0cf")})))
-    (g/render-item! (context "minimap")
-                    {:type :box :x (* 3 cx) :y (* 3 cy)
-                     :w 53 :h 42 :color "white"}))
-  (assoc state :world-updates []))
 
-(defn tick! [contexts]
-  (let [t (.now js/Date)
-        dt (- t @current-time)
-        new-state (draw! (update-state @state dt) contexts)]
-    (do (reset! current-time t)
-        (reset! state new-state)
-        (swap! frame-counter inc))))
+; --  UI  -- >8 --
 
 (defn get-debug-content []
-  (str "FPS: " @fps " - " @io/keymap " - " @io/mouse "\n"
-        (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
-                                              (dissoc :world-updates)
-                                              (dissoc :units))))))
+  
+          (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
+                                                (dissoc :world-updates)
+                                                (dissoc :units)))))
 
 (defn profile-box []
   [:div {:style {:margin-top 5 :background-color "black"
@@ -297,9 +207,9 @@
        (for [a actions]
          ^{:key (hash a)}
           [:button
-           {:onClick #(swap! state (fn [s] (action/select-action a s)))
+           {:onClick #(swap! state (fn [s] (core/select-action a s)))
             :style {:padding 10 :margin 0 :width 111}}
-           (action/action-name a)])))])
+           (core/action-name a)])))])
          
        
 
@@ -341,9 +251,24 @@
                   :margin-top 5
                   :padding 10
                   :width 820}}
-    (get-debug-content)]])
+     (str "FPS: " @fps " - " @io/keymap "\n"
+          (if @debug?
+            (get-debug-content)
+            "Press , to debug state"))]])
+
+; -- End UI --- >8 --
+
+(defn tick! [contexts]
+  (let [t (.now js/Date)
+        dt (- t @current-time)
+        new-state (drawing/draw! (update-state @state dt) contexts)]
+    (do (reset! current-time t)
+        (reset! state new-state)
+        (reset! debug? (io/key-pressed? "Comma"))
+        (swap! frame-counter inc))))
 
 (def timers (atom []))
+
 ;(reset! state (init-state))
 (defn ^:dev/before-load stop []
   (doseq [t @timers]
@@ -355,12 +280,13 @@
   (swap! state game/redraw-world)
   (rdom/render [rts-app] (js/document.getElementById "app"))
   (let [contexts (init-contexts)]
-    (swap! timers conj (js/setInterval #(tick! contexts) 16.66)))
-  (swap! timers conj (js/setInterval
-                      #(do 
-                         (reset! fps @frame-counter)
-                         (reset! frame-counter 0))
-                      1000)))
+    (doto timers
+        (swap! conj (js/setInterval #(tick! contexts) 16.66))
+        (swap! conj (js/setInterval
+                     #(do 
+                        (reset! fps @frame-counter)
+                        (reset! frame-counter 0))
+                     1000)))))
 
 (defn ^:export init []
   (println "Initializing...")

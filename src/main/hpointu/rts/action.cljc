@@ -62,23 +62,3 @@
         (calculate-new-path unit nil))))
 
   (update-in state [:units uid] move-unit))
-      
-(defn update-actor [state actor-uid dt]
-  (if-let [current-goal (get-in state [:units actor-uid :goals 0])]
-    (act state actor-uid current-goal dt)
-    state))
-
-(defn update-actors [{:keys [units] :as state} dt]
-  (letfn [(actor-reducer [prev-state actor]
-            (update-actor prev-state (first actor) dt))]
-    (reduce actor-reducer state units)))
-
-(defprotocol UiAction
-  (action-name [this])
-  (select-action [this state]))
-
-(defmulti confirm-mouse-mode (fn [[mmt _] _] mmt))
-(defmethod confirm-mouse-mode :build
-  [[_ args] {:keys [left-click] :as state}]
-  (println (str "Building a " (name args) " on " left-click "..."))
-  (dissoc state :mouse-mode))

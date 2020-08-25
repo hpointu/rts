@@ -1,6 +1,7 @@
 (ns hpointu.rts.app-test
   (:require [cljs.test :refer [deftest testing are is]]
             [hpointu.rts.core :as core]
+            [hpointu.rts.game :as game]
             [hpointu.rts.action :as action]
             [hpointu.rts.utils :as utils]))
 
@@ -31,7 +32,7 @@
          #{[1 0] [1 1] [0 1]})))
 
 (deftest change-world-value
-  (is (= (core/set-world-cell (core/->world 2 2) 1 0 :x)
+  (is (= (core/set-world-cells (core/->world 2 2) [[1 0]] :x)
          [[:w :x]
           [:w :w]])))
 
@@ -58,7 +59,7 @@
 (deftest actors
   (testing "waiting"
     (let [state {:units {1 {:goals [[:wait 10]]}}}
-          new-state (action/update-actors state 2)]
+          new-state (game/update-actors state 2)]
       (is (= [:wait 8] (get-in new-state [:units 1 :goals 0])))))
 
   (testing "walking"
@@ -67,8 +68,26 @@
                  :world [[:g :g :g]
                          [:g :g :g]
                          [:g :g :g]]}
-          new-state (action/update-actors state 100)]
+          new-state (game/update-actors state 100)]
       (are [k v] (= (get-in new-state [:units 1 k]) v)
            :x 1.3
            :y 1.3))))
           
+
+(deftest add-building
+  (let [tiles (core/building-tiles {:size 2 :pos [1 1]})
+        world  [[:g :g :g :g :g]
+                [:g :g :g :g :g]
+                [:g :g :g :g :g]
+                [:g :g :g :g :g]
+                [:g :g :g :g :g]]
+        expect [[:g :g :g :g :g]
+                [:g :w :w :g :g]
+                [:g :w :w :g :g]
+                [:g :g :g :g :g]
+                [:g :g :g :g :g]]]
+    (is (= #{[1 1] [2 1] [1 2] [2 2]} (set tiles)))
+    (is (= expect (core/set-world-cells world tiles :w)))))
+
+
+

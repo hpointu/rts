@@ -22,6 +22,16 @@
 (defn cell-redraw [[x y]]
   [:cell x y])
 
+(defn busy-cell? [{:keys [units] :as state} pos]
+  (some #(= pos ((juxt :x :y) %)) (vals units)))
+
+(defn free-tiles? [state tiles]
+  (not-any? #(or (core/obstacle? (:world state) %1)
+                 (busy-cell? state %1)) tiles))
+
+(defn redraw [{:keys [world] :as state} tiles]
+  (update state :world-updates into (for [t tiles] (cell-redraw t))))
+
 (defn redraw-world [{:keys [world] :as state}]
   (let [elems (for [x (range (core/world-width world))
                     y (range (core/world-height world))]
@@ -45,8 +55,8 @@
         (update :world-updates into (map cell-redraw (keep identity [new-hover hover]))))))
 
 (defn set-cell [{:keys [hover] :as state} v]
-  (let [[x y] hover]
-    (update state :world core/set-world-cell x y v)))
+  (let [pos hover]
+    (update state :world core/set-world-cells [pos] v)))
 
 (defn clamp-camera [{:keys [world] :as state}]
   (let [max-x (- (core/world-width world) 17.4)
@@ -91,7 +101,7 @@
 (defn end-game-left-click
   [{:keys [mouse-mode] :as state} select-unit-predicate]
   (if mouse-mode
-    (action/confirm-mouse-mode mouse-mode state)
+    (core/left-click-action mouse-mode state)
     (-> state
         (select-units select-unit-predicate)
         (dissoc :selector)
@@ -112,3 +122,54 @@
                 #(into {} (map (fn [[uid u]]
                                  [uid (set-unit-destination targets u)]) %)))
         (dissoc :right-click))))
+
+(defn update-actor [state actor-uid dt]
+  (if-let [current-goal (get-in state [:units actor-uid :goals 0])]
+    (action/act state actor-uid current-goal dt)
+    state))
+
+(defn update-actors [{:keys [units] :as state} dt]
+  (letfn [(actor-reducer [prev-state actor]
+            (update-actor prev-state (first actor) dt))]
+    (reduce actor-reducer state units)))
+
+(defn add-building [state btype pos]
+  (let [building (assoc (core/->building btype) :pos pos)
+        tiles (core/building-tiles building)
+        can? (free-tiles? state tiles)]
+    (if can?
+      (-> state
+          (update :buildings conj building)
+          (update :world #(core/set-world-cells % tiles :w))
+          (dissoc :mouse-mode)
+          (redraw tiles))
+      state)))
+
+(extend-type core/Build
+  core/UiAction
+  (core/action-name [{:keys [building]}]
+    (name building))
+  (core/select-action [{:keys [building] :as this} state]
+    (assoc state :mouse-mode this))
+  core/MouseMode
+  (core/left-click-action
+    [{:keys [building]} {:keys [left-click] :as state}]
+    (add-building state building left-click)))
+
+(defmethod core/->building :farm [btype]
+  {:type btype
+   :pv-max 50
+   :pv 50
+   :size 2})
+
+(defmethod core/->building :house [btype]
+  {:type btype
+   :pv-max 50
+   :pv 50
+   :size 1})
+
+(defmethod core/->building :hotel [btype]
+  {:type btype
+   :pv-max 80
+   :pv 80
+   :size 3})
