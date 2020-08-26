@@ -3,6 +3,8 @@
       
 (defmulti ->building (fn [btype] btype))
 
+(defmulti act (fn [state actor-uid action dt] (first action)))
+
 (defrecord Build [building])
 
 (defprotocol UiAction
@@ -11,7 +13,11 @@
 
 (defprotocol MouseMode
   (draw-hover! [this ctx state])
-  (left-click-action [this state]))
+  (left-click-start [this state pos])
+  (left-click-end [this state pos])
+  (right-click-start [this state pos])
+  (right-click-end [this state pos])
+  (drag [this state pos]))
 
 ;; TODO Probably move to game.cljc
 (def uids (atom 0))
@@ -45,13 +51,17 @@
     (let [[x y] pos]
       (if pos (recur (assoc-in w [y x] v) more) w))))
 
-(defn unit-moving? [{:keys [waypoints]}] (seq waypoints))
+(defn entity-moving? [{:keys [waypoints]}] (seq waypoints))
 
-(defn add-goal [unit goal]
-  (update unit :goals conj goal))
+(defn entity-aabb [{:keys [pos] :as entity}]
+  (let [[x y] pos]
+    [(+ 0.1 x) (+ 0.1 y) 0.8 0.8]))
 
-(defn set-goal [unit goal]
-  (assoc unit :goals [goal]))
+(defn add-goal [entity goal]
+  (update entity :goals conj goal))
+
+(defn set-goal [entity goal]
+  (assoc entity :goals [goal]))
 
 (defn obstacle?
   ([world x y]
@@ -93,6 +103,9 @@
 
 (defn building-tiles [{:keys [size pos]}]
   (tiles pos size size))
+
+(defn built? [{:keys [build-time build-progress]}]
+  (= build-progress build-time))
 
 (defn get-free-zone [world pos size]
 

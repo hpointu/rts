@@ -1,14 +1,14 @@
 (ns hpointu.rts.game
   (:require [hpointu.rts.core :as core]
-            [hpointu.rts.action :as action]
-            [hpointu.rts.path :refer [path]])
-  (:require-macros [hpointu.rts.macros :refer [update-selected-units]]))
+            [hpointu.rts.path :refer [path]]
+            [hpointu.rts.utils :refer [distance collides?]])
+  (:require-macros [hpointu.rts.macros :refer [update-selected-entities]]))
 
 (def VIEW_W 18)
 (def VIEW_H 14)
 
 
-(defn visible? [{:keys [camera]} x y]
+(defn visible? [{:keys [camera]} [x y]]
   (let [[cx cy] camera]
     (and (< x (+ cx VIEW_W))
          (< y (+ cy VIEW_H)))))
@@ -28,10 +28,10 @@
   ([state pos]
    (busy-cell? state pos (fn [_] false)))
 
-  ([{:keys [units] :as state} pos ignore-pred]
+  ([{:keys [entities] :as state} pos ignore-pred]
    (some
-     (fn [u] (= ((comp vec #(map js/Math.round %) (juxt :x :y)) u) pos))
-     (remove ignore-pred (vals units)))))
+     (fn [u] (= ((comp vec #(map js/Math.round %) :pos) u) pos))
+     (remove ignore-pred (vals entities)))))
 
 (defn free-tiles? [state tiles]
   (not-any? #(or (core/obstacle? (:world state) %1)
@@ -62,6 +62,16 @@
         (assoc :hover new-hover)
         (update :world-updates into (map cell-redraw (keep identity [new-hover hover]))))))
 
+(defn update-selector [state start end]
+  (assoc state :selector (into start end)))
+
+(defn selector-rect [{selector :selector}]
+  (when selector
+    (let [[x1 y1 x2 y2] selector
+          [x1 x2] [(min x1 x2) (max x1 x2)]
+          [y1 y2] [(min y1 y2) (max y1 y2)]]
+      [x1 y1 (- x2 x1) (- y2 y1)])))
+
 (defn set-cell [{:keys [hover] :as state} v]
   (let [pos hover]
     (update state :world core/set-world-cells [pos] v)))
@@ -85,110 +95,200 @@
         (update-in [:camera 1] + (* speed dy))
         (clamp-camera))))
 
-(defn select-units [{:keys [selector] :as state} select-unit-pred]
+(defn get-selected-entities [{:keys [entities]}]
+  (filter :selected? (vals entities)))
 
-    (defn assing-select-id [units]
-      (loop [result []
-             left units
-             cpt 0]
-        (let [[[uid u] & more] left
-              select? (select-unit-pred u)]
-          (if u
-            (recur
-              (conj result [uid
-                            (assoc u :selected? (if select? cpt false))])
-              more
-              (if select? (inc cpt) cpt))
-            result))))
+(defn update-entity [state uid func & args]
+  (update-in state [:entities uid] #(apply func % args)))
 
-    (update state :units #(into {} (assing-select-id %))))
+(defn select-entities
+  [{:keys [entities] :as state} select-entity-pred append?]
+  (letfn
+    [(-select [uids]
+      (loop [cpt (if append? (count (get-selected-entities state)) 0)
+             current state
+             left uids]
+        (if (empty? left) current
+          (let [uid (first left)
+                select? (select-entity-pred (get entities uid))
+                selected (get-in entities [uid :selected?])
+                not-sel (if append? selected false)
+                sel (if selected (if append? selected cpt) cpt)
+                sel (if select? sel not-sel)
+                next-cpt (if (and sel (not selected)) (inc cpt) cpt)
+                next-state (update-entity current uid assoc :selected? sel)]
+            (recur next-cpt next-state (rest left))))))]
+    (-select (keys entities))))
 
-(defn get-selected-units [{:keys [units]}]
-  (filter :selected? (vals units)))
+(defn move-selected-entities [{:keys [world entities] :as state} target]
 
-(defn update-unit [state uid func & args]
-  (update-in state [:units uid] #(apply func % args)))
-
-(defn end-game-left-click
-  [{:keys [mouse-mode] :as state} select-unit-predicate]
-  (if mouse-mode
-    (core/left-click-action mouse-mode state)
-    (-> state
-        (select-units select-unit-predicate)
-        (dissoc :selector)
-        (dissoc :left-click))))
-
-(defn end-game-right-click [{:keys [world right-click units] :as state}]
-
-  (defn set-unit-destination [targets {:keys [x y selected?] :as unit}]
+  (defn set-entity-destination [{:keys [selected?] :as entity} targets]
     (if selected?
-      (-> unit
+      (-> entity
         (core/add-goal [:walk (nth targets selected?)]))
-      unit))
+      entity))
 
-  (let [size (count (get-selected-units state))
-        targets (core/get-free-zone world right-click size)]
-    (-> state
-        (update :units
-                #(into {} (map (fn [[uid u]]
-                                 [uid (set-unit-destination targets u)]) %)))
-        (dissoc :right-click))))
+  (let [size (count (get-selected-entities state))
+        targets (core/get-free-zone world target size)]
+    (update-selected-entities state set-entity-destination targets)))
 
 (defn update-actor [state actor-uid dt]
-  (if-let [current-goal (get-in state [:units actor-uid :goals 0])]
-    (action/act state actor-uid current-goal dt)
+  (if-let [current-goal (get-in state [:entities actor-uid :goals 0])]
+    (core/act state actor-uid current-goal dt)
     state))
 
-(defn update-actors [{:keys [units] :as state} dt]
+(defn update-actors [{:keys [entities] :as state} dt]
   (letfn [(actor-reducer [prev-state actor]
             (update-actor prev-state (first actor) dt))]
-    (reduce actor-reducer state units)))
+    (reduce actor-reducer state entities)))
 
-(defn nearest-tile [world start tiles]
+(defn nearest-tile-path [world start tiles]
   (let [neighbour-fn #(core/neighbours world %1)
         cost-fn #(core/cost world % %)
-        paths (map #(path start % cost-fn neighbour-fn))]
+        paths (map #(path start % cost-fn neighbour-fn) tiles)]
     (first (sort-by count paths))))
 
-(defn add-building [state btype pos]
-  (let [building (assoc (core/->building btype) :pos pos)
+(defmethod core/act :wait [state uid [_ t] dt]
+  (if (> t 0)
+    (update-in state [:entities uid :goals 0 1] - dt)
+    (update-in state [:entities uid :goals] (comp vec rest))))
+
+(defmethod core/act :build [state uid [_ btype pos] dt]
+  (let [building (assoc (core/->building btype)
+                        :uid (core/get-uid)
+                        :pos pos)
         tiles (core/building-tiles building)
         can? (free-tiles? state tiles)]
     (if can?
       (-> state
-          (update :buildings conj building)
+          (update :entities assoc (:uid building) building)
           (update :world #(core/set-world-cells % tiles :w))
-          (dissoc :mouse-mode)
+          (update-in [:entities uid :goals] (comp vec rest))
           (redraw tiles))
       state)))
 
+(defmethod core/act :walk
+  [{:keys [world entities] :as state} uid [_ target] dt]
+
+  (defn arrived? [{:keys [pos] :as entity} dest]
+    (< (distance pos dest) 0.01))
+
+  (defn cost-fn [from to]
+    (core/cost world from to))
+
+  (defn get-path [pos]
+    (let [neighbours-fn #(core/neighbours world %1)]
+      (path (map int pos) target cost-fn neighbours-fn)))
+
+  (defn calculate-new-path [{:keys [pos] :as entity}]
+    (if-let [path (get-path pos)]
+      (assoc entity :waypoints path)
+      (-> entity
+         (assoc :waypoints [])
+         (update :goals #(into [[:wait 1000]] %)))))
+  (defn dir [a b]
+    (if (< a b) 1 -1))
+
+  (defn move-entity [{:keys [walk-speed pos waypoints] :as entity}]
+    (let [dt (/ dt 1000)
+          [wp & more] waypoints
+          [tx ty] wp
+          [x y] pos
+          [max-dx max-dy] [(- tx x) (- ty y)]
+          [dx dy] (map #(* walk-speed dt %) [(dir x tx) (dir y ty)])
+          [dx dy] [(min-key js/Math.abs max-dx dx) 
+                   (min-key js/Math.abs max-dy dy)]]
+      (cond
+        ; arrived to wp
+        (arrived? entity wp)
+        (let [[x y] wp]
+          (-> entity
+              (assoc :pos [x y])  ; start from round values
+              (assoc :waypoints (vec more))
+              ; if no more waypoints, go to next goal
+              (update :goals #(if (not more) (into [] (rest %1)) %1))))
+        ; there's a wp further away :
+        wp
+        (if (apply core/obstacle? world wp)
+          (calculate-new-path entity)
+          (-> entity
+              (update :pos #(map + [dx dy] %))))
+        ; there are no wp yet?
+        (not wp)
+        (calculate-new-path entity))))
+
+  (if-let [speed (get-in entities [uid :walk-speed])]
+    (update-in state [:entities uid] move-entity)
+    (update-in state [:entities uid :goals] (comp vec rest))))
+
+(extend-type nil
+  core/MouseMode
+  (left-click-start [_ state pos] (update-selector state pos pos))
+  (drag [_ {:keys [selector] :as state} pos]
+    (if selector
+      (let [[x y & _] selector] (update-selector state [x y] pos))
+      state))
+  (left-click-end [_ {:keys [mods] :as state} pos]
+    (-> state
+        (select-entities
+          #(collides? (selector-rect state) (core/entity-aabb %))
+          (contains? mods :append))
+        (dissoc :selector)))
+  (right-click-start [_ state pos]
+    (move-selected-entities state (map int pos)))
+  (right-click-end [_ state _] state))
+
 (extend-type core/Build
   core/UiAction
-  (core/action-name [{:keys [building]}]
+  (action-name [{:keys [building]}]
     (name building))
-  (core/select-action [{:keys [building] :as this} state]
+  (select-action [{:keys [building] :as this} state]
     (assoc state :mouse-mode this))
+
   core/MouseMode
-  (core/left-click-action
-    [{:keys [building]} {:keys [left-click] :as state}]
-    (update-selected-units state assoc :x 0.5)))
+  (drag [_ state _] state)
+  (right-click-start [_ state _] state)
+  (right-click-end [_ state _] state)
+  (left-click-start [_ state _] state)
+  (left-click-end
+    [{:keys [building]} {:keys [world] :as state} pos]
+    (let [entity (first (get-selected-entities state))
+          start ((comp #(map int %) :pos) entity)
+          pos (map int pos)
+          tmp (assoc (core/->building building) :pos pos)
+          tiles (core/building-tiles tmp)
+          path (nearest-tile-path world start tiles)]
+      (-> state
+          (move-selected-entities (second (reverse path)))
+          (update-selected-entities
+            update :goals conj [:build building pos])
+          (dissoc :mouse-mode)))))
       
-    ;(add-building state building left-click)))
+(defn ->base-building [building]
+  (into
+    {:build-progress 0
+     :build-time 10000
+     :goals []}
+     
+    building))
 
 (defmethod core/->building :farm [btype]
-  {:type btype
-   :pv-max 50
-   :pv 50
-   :size 2})
+  (->base-building
+    {:btype btype
+     :pv-max 50
+     :pv 50
+     :size 2}))
 
 (defmethod core/->building :house [btype]
-  {:type btype
-   :pv-max 50
-   :pv 50
-   :size 1})
+  (->base-building
+    {:btype btype
+     :pv-max 50
+     :pv 50
+     :size 1}))
 
 (defmethod core/->building :hotel [btype]
-  {:type btype
-   :pv-max 80
-   :pv 80
-   :size 3})
+  (->base-building
+    {:btype btype
+     :pv-max 80
+     :pv 80
+     :size 3}))

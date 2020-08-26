@@ -2,7 +2,6 @@
   (:require [hpointu.rts.input :as io]
             [hpointu.rts.core :as core]
             [hpointu.rts.drawing :as drawing]
-            [hpointu.rts.action :as action]
             [hpointu.rts.game :as game]
             [reagent.core :as r]
             [reagent.dom :as rdom]
@@ -20,10 +19,10 @@
 
 (def SIZE 35)
 
-(defn ->unit [x y]
+(defn ->entity [x y]
   {:uid (core/get-uid)
-   :x x
-   :y y
+   :walk-speed 3
+   :pos [x y]
    :pv 100
    :pv-max 100
    :available-actions [(core/->Build :house)
@@ -37,26 +36,28 @@
   {:world (core/->world 74 74)
    :camera [0 0]
    :buildings []
-   :units (into {} (for [unit [
-                               (->unit 2 2)
-                               (->unit 3 4)
-                               (->unit 4 4)
-                               (->unit 5 3)
-                               (->unit 5 4)
-                               (->unit 6 3)
-                               (->unit 6 5)
-                               (->unit 6 6)
-                               (->unit 6 8)
-                               (->unit 7 4)
-                               (->unit 7 5)
-                               (->unit 7 6)
-                               (->unit 7 8)
-                               (->unit 8 5)
-                               (->unit 8 8)
-                               (->unit 8 9)
-                               (->unit 9 5)
-                               (->unit 9 8)]]
-                     [(:uid unit) unit]))
+   :entities
+   (into
+     {}
+     (for [entity [(->entity 2 2)
+                   (->entity 3 4)]]
+                   ; (->entity 4 4)
+                   ; (->entity 5 3)
+                   ; (->entity 5 4)
+                   ; (->entity 6 3)
+                   ; (->entity 6 5)
+                   ; (->entity 6 6)
+                   ; (->entity 6 8)
+                   ; (->entity 7 4)
+                   ; (->entity 7 5)
+                   ; (->entity 7 6)
+                   ; (->entity 7 8)
+                   ; (->entity 8 5)
+                   ; (->entity 8 8)
+                   ; (->entity 8 9)
+                   ; (->entity 9 5)
+                   ; (->entity 9 8)]]
+      [(:uid entity) entity]))
    :world-updates []})
 
 (defn to-world
@@ -65,8 +66,11 @@
   ([[x y] size]
    [(/ x size) (/ y size)]))
 
-(defn to-grid [camera pos]
-  (map (comp int +) camera (to-world pos)))
+(defn to-grid
+  ([camera pos]
+   (map (comp int +) camera (to-world pos)))
+  ([camera pos floating?]
+   (map + camera (to-world pos))))
 
 (defn get-game-canvas []
   (js/document.getElementById "game"))
@@ -98,37 +102,46 @@
       {:canvas (selector canvas)
        :context (selector contexts)})))
 
+(defn get-modifiers []
+  (if (or (io/key-pressed? "ShiftLeft")
+          (io/key-pressed? "ShiftRight"))
+    #{:append}
+    #{}))
 
 
 (defn handle-mouse-game
   [{:keys [camera selector mouse-mode right-click left-click] :as state}]
-  (defn select-unit? [{:keys [x y] :as u}]
-    (let [{:keys [x1 y1 x2 y2]} selector
-          [x1 x2] [(min x1 x2) (max x1 x2)]
-          [y1 y2] [(min y1 y2) (max y1 y2)]
-          rect [x1 y1 (- x2 x1) (- y2 y1)]]
-      (collides? (drawing/unit-aabb state u) rect)))
 
-  (let [[x y] (io/mouse-pos (get-game-canvas))
-        [wx wy] (to-grid camera [x y])]
+  (let [mouse-pos (io/mouse-pos (get-game-canvas))
+        [x y] (to-grid camera mouse-pos true)
+        state (assoc state :mods (get-modifiers))]
     (cond
       (and (io/mouse-pressed? :left) (not (io/mouse-pressed? :right)))
-      (if selector
-        (update state :selector #(assoc % :x2 x :y2 y))
-        (let [state (assoc state :left-click [wx wy])]
-          (if mouse-mode
-            state
-            (update state :selector #(assoc % :x1 x :y1 y :x2 x :y2 y)))))
+      (if (not left-click)
+        (-> state
+          (#(core/left-click-start mouse-mode % [x y]))
+          (assoc :left-click [(int x) (int y)]))
+        (core/drag mouse-mode state [x y]))
+
       (and (io/mouse-pressed? :right) (not (io/mouse-pressed? :left)))
       (if (not right-click)
-        (assoc state :right-click [wx wy])
-        state)
+        (-> state
+          (#(core/right-click-start mouse-mode % [x y]))
+          (assoc :right-click [(int x) (int y)]))
+        (core/drag mouse-mode state [x y]))
+
       :default
       (if left-click
-        (game/end-game-left-click state select-unit?)
+        (-> state
+            (#(core/left-click-end mouse-mode % [x y]))
+            (dissoc :left-click)
+            (dissoc :mods))
         (if right-click
-          (game/end-game-right-click state)
-          state)))))
+          (-> state
+              (#(core/right-click-end mouse-mode % [x y]))
+              (dissoc :right-click)
+              (dissoc :mods))
+          (dissoc state :mods))))))
     
 
 (defn handle-mouse-minimap [state]
@@ -182,7 +195,7 @@
 (defn get-debug-content []
   (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
                                         (dissoc :world-updates)
-                                        (dissoc :units)))))
+                                        (dissoc :entities)))))
 
 (defn profile-box [[u & more]]
   [:div {:style {:margin-top 5 :background-color "black"
@@ -190,10 +203,12 @@
                  :flex-grow 1}}
     (if (and u (not more))
       [:div 
-       [:h5 {:style {:padding-left 5 :margin 0 :margin-top 5}} "Unit"]
+       [:h5 {:style {:padding-left 5 :margin 0 :margin-top 5}}
+        (str "entity " (:uid u))]
        [:pre {:style {:padding "0 5px"}}
-        (str "PV: " (:pv u) "/" (:pv-max u) "\n"
-            "POS: " ((juxt :x :y) u) "\n")]]
+        (str "PV: " (:pv u) "/" (:pv-max u) "\n")
+        (for [g (:goals u)] (str g "\n"))]]
+             
       [:div {:style {:padding 5}}
        "Coucou"])])
 
@@ -204,8 +219,8 @@
                  :justify-content "stretch"
                  :align-content "stretch"
                  :flex-grow 1}}
-   (let [[unit & more] selection
-         actions (:available-actions unit)]
+   (let [[entity & more] selection
+         actions (:available-actions entity)]
      (when (and actions (not more))
        (for [a actions]
          ^{:key (hash a)}
@@ -236,8 +251,8 @@
                 :width 223
                 :height 223
                 :style {:background-color "#111" :width 223 :height 223}}]
-      [profile-box (game/get-selected-units @state)]
-      [action-box (game/get-selected-units @state)]
+      [profile-box (game/get-selected-entities @state)]
+      [action-box (game/get-selected-entities @state)]
       (when (:mouse-mode @state)
         [:div {:style {:padding 5 :margin 0 :flex-grow 0.1
                        :display "flex"

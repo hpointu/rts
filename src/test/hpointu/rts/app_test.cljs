@@ -2,7 +2,6 @@
   (:require [cljs.test :refer [deftest testing are is]]
             [hpointu.rts.core :as core]
             [hpointu.rts.game :as game]
-            [hpointu.rts.action :as action]
             [hpointu.rts.utils :as utils]))
 
 (deftest test-obstacles
@@ -58,20 +57,19 @@
 
 (deftest actors
   (testing "waiting"
-    (let [state {:units {1 {:goals [[:wait 10]]}}}
+    (let [state {:entities {1 {:goals [[:wait 10]]}}}
           new-state (game/update-actors state 2)]
-      (is (= [:wait 8] (get-in new-state [:units 1 :goals 0])))))
+      (is (= [:wait 8] (get-in new-state [:entities 1 :goals 0])))))
 
   (testing "walking"
-    (let [state {:units {1 {:x 1 :y 1 :goals [[:walk [2 2]]]
-                            :waypoints [[2 2]]}}
+    (let [state {:entities {1 {:pos [1 1] :goals [[:walk [2 2]]]}}
+                       :waypoints [[2 2]]
                  :world [[:g :g :g]
                          [:g :g :g]
                          [:g :g :g]]}
           new-state (game/update-actors state 100)]
-      (are [k v] (= (get-in new-state [:units 1 k]) v)
-           :x 1.3
-           :y 1.3))))
+      (are [k v] (= (get-in new-state [:entities 1 k]) v)
+           :pos [1.3 1.3]))))
           
 
 (deftest add-building
