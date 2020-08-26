@@ -177,31 +177,34 @@
         (game/redraw-visible))))
 
 
-;; drawing bits, they deserve their own namespace I think  -- >8
-;; -- end of drawing bit -- >8
-
-
 ; --  UI  -- >8 --
 
 (defn get-debug-content []
-  
-          (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
-                                                (dissoc :world-updates)
-                                                (dissoc :units)))))
+  (with-out-str (cljs.pprint/pprint (-> @state (dissoc :world)
+                                        (dissoc :world-updates)
+                                        (dissoc :units)))))
 
-(defn profile-box []
+(defn profile-box [[u & more]]
   [:div {:style {:margin-top 5 :background-color "black"
+                 :font-family "Mono"
                  :flex-grow 1}}
-    [:span "Coucou"]])
+    (if (and u (not more))
+      [:div 
+       [:h5 {:style {:padding-left 5 :margin 0 :margin-top 5}} "Unit"]
+       [:pre {:style {:padding "0 5px"}}
+        (str "PV: " (:pv u) "/" (:pv-max u) "\n"
+            "POS: " ((juxt :x :y) u) "\n")]]
+      [:div {:style {:padding 5}}
+       "Coucou"])])
 
-(defn action-box []
+(defn action-box [selection]
   [:div {:style {:margin-top 5 :background-color "black"
                  :display "flex"
                  :flex-wrap "wrap"
                  :justify-content "stretch"
                  :align-content "stretch"
                  :flex-grow 1}}
-   (let [[unit & more] (game/get-selected-units @state)
+   (let [[unit & more] selection
          actions (:available-actions unit)]
      (when (and actions (not more))
        (for [a actions]
@@ -233,8 +236,8 @@
                 :width 223
                 :height 223
                 :style {:background-color "#111" :width 223 :height 223}}]
-      [profile-box]
-      [action-box]
+      [profile-box (game/get-selected-units @state)]
+      [action-box (game/get-selected-units @state)]
       (when (:mouse-mode @state)
         [:div {:style {:padding 5 :margin 0 :flex-grow 0.1
                        :display "flex"

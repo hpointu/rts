@@ -47,6 +47,12 @@
 
 (defn unit-moving? [{:keys [waypoints]}] (seq waypoints))
 
+(defn add-goal [unit goal]
+  (update unit :goals conj goal))
+
+(defn set-goal [unit goal]
+  (assoc unit :goals [goal]))
+
 (defn obstacle?
   ([world x y]
    (let [obstacles #{:w}]

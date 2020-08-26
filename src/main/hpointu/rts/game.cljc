@@ -1,6 +1,8 @@
 (ns hpointu.rts.game
   (:require [hpointu.rts.core :as core]
-            [hpointu.rts.action :as action]))
+            [hpointu.rts.action :as action]
+            [hpointu.rts.path :refer [path]])
+  (:require-macros [hpointu.rts.macros :refer [update-selected-units]]))
 
 (def VIEW_W 18)
 (def VIEW_H 14)
@@ -104,6 +106,9 @@
 (defn get-selected-units [{:keys [units]}]
   (filter :selected? (vals units)))
 
+(defn update-unit [state uid func & args]
+  (update-in state [:units uid] #(apply func % args)))
+
 (defn end-game-left-click
   [{:keys [mouse-mode] :as state} select-unit-predicate]
   (if mouse-mode
@@ -118,7 +123,7 @@
   (defn set-unit-destination [targets {:keys [x y selected?] :as unit}]
     (if selected?
       (-> unit
-        (update :goals conj [:walk (nth targets selected?)]))
+        (core/add-goal [:walk (nth targets selected?)]))
       unit))
 
   (let [size (count (get-selected-units state))
@@ -138,6 +143,12 @@
   (letfn [(actor-reducer [prev-state actor]
             (update-actor prev-state (first actor) dt))]
     (reduce actor-reducer state units)))
+
+(defn nearest-tile [world start tiles]
+  (let [neighbour-fn #(core/neighbours world %1)
+        cost-fn #(core/cost world % %)
+        paths (map #(path start % cost-fn neighbour-fn))]
+    (first (sort-by count paths))))
 
 (defn add-building [state btype pos]
   (let [building (assoc (core/->building btype) :pos pos)
@@ -160,7 +171,9 @@
   core/MouseMode
   (core/left-click-action
     [{:keys [building]} {:keys [left-click] :as state}]
-    (add-building state building left-click)))
+    (update-selected-units state assoc :x 0.5)))
+      
+    ;(add-building state building left-click)))
 
 (defmethod core/->building :farm [btype]
   {:type btype
