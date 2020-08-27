@@ -19,27 +19,33 @@
 
 (def SIZE 35)
 
-(defn- ->unit [utype x y]
-  (into (core/->unit utype)
-        {:uid (core/get-uid)
-         :pos [x y]}))
+(defn- ->unit
+  ([utype x y]
+   (into (core/->unit utype)
+         {:uid (core/get-uid)
+          :pos [x y]}))
+  ([utype x y pv]
+   (into (core/->unit utype)
+         {:uid (core/get-uid)
+          :pv pv
+          :pos [x y]})))
 
 (defn init-entities []
   [(->unit :peon 2 2)
    (->unit :knight 3 4)
    (->unit :peon 4 4)
    (->unit :peon 5 3)
-   (->unit :knight 5 4)
+   (->unit :knight 5 4 45)
    (->unit :peon 6 3)
-   (->unit :peon 6 5)
+   (->unit :peon 6 5 14)
    (->unit :knight 6 6)
-   (->unit :knight 6 8)
+   (->unit :knight 6 8 120)
    (->unit :knight 7 4)
    (->unit :peon 7 5)
    (->unit :peon 7 6)
-   (->unit :peon 7 8)
+   (->unit :peon 7 8 3)
    (->unit :peon 8 5)
-   (->unit :knight 8 8)
+   (->unit :knight 8 8 88)
    (->unit :peon 8 9)
    (->unit :knight 9 5)
    (->unit :peon 9 8)])
