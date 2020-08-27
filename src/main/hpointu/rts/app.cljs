@@ -1,6 +1,7 @@
 (ns hpointu.rts.app
   (:require [hpointu.rts.input :as io]
             [hpointu.rts.core :as core]
+            [goog.string :as gstring]
             [hpointu.rts.drawing :as drawing]
             [hpointu.rts.game :as game]
             [reagent.core :as r]
@@ -188,20 +189,80 @@
                                         (dissoc :world-updates)
                                         (dissoc :entities)))))
 
-(defn profile-box [[u & more]]
-  [:div {:style {:margin-top 5 :background-color "black"
-                 :font-family "Mono"
+(defn short-name [n s]
+  (if (> (count n) s)
+    (str (subs n 0 s) ".")
+    n))
+
+(defn percent [pv pv-max]
+  (* 100 (/ pv pv-max)))
+
+(defn health-color [pv pv-max]
+  (let [p (percent pv pv-max)]
+    (cond
+      (< p 20) "red"
+      (< p 50) "orange"
+      (< p 80) "#ed0"
+      :default "green")))
+
+(defn health-bar [pv pv-max]
+  [:div {:style {:background-color "#444"
+                 :margin 8
+                 :height 18
+                 :position "relative"
+                 :border "1px solid #fff"}}
+   [:div {:style {:background-color (health-color pv pv-max)
+                  :height "100%"
+                  :width (str (percent pv pv-max) "%")}}
+    (gstring/unescapeEntities "&nbsp;")]
+   [:span
+    {:style {:vertical-align "middle"
+             :position "absolute"
+             :top 2
+             :text-align "center"
+             :width "100%"
+             :background-color "#2226"
+             :margin-bottom 2
+             :color "white"
+             :font-weight "bold"
+             :font-size "11px"}}
+    (str "PV: " pv "/" pv-max)]])
+
+(defn health-preview [pv pv-max]
+  [:div {:style {:background-color "#444"
+                 :font-size 4
+                 :min-width 40}}
+   [:div {:style {:background-color (health-color pv pv-max)
+                  :width (str (percent pv pv-max) "%")}}
+    (gstring/unescapeEntities "&nbsp;")]])
+
+(defn profile-box [[u & more :as entities]]
+  [:div {:style {:margin-top 5 :background-color "#111"
+                 :max-width 222
+                 :border "1px solid #888"
+                 :font-family "\"Courier New\", Courier, monospace"
                  :flex-grow 1}}
     (if (and u (not more))
       [:div 
        [:h5 {:style {:padding-left 5 :margin 0 :margin-top 5}}
-        (str "entity " (:uid u))]
+        (str (:name u) " - " (:uid u))]
+       [health-bar (:pv u) (:pv-max u)]
        [:pre {:style {:padding "0 5px"}}
-        (str "PV: " (:pv u) "/" (:pv-max u) "\n")
         (for [g (:goals u)] (str g "\n"))]]
-             
-      [:div {:style {:padding 5}}
-       "Coucou"])])
+      
+      [:div {:style {:display "flex"
+                     :margin-top 1
+                     :margin-left 1
+                     :text-align "center"
+                     :font-size 9
+                     :flex-wrap "wrap"}}
+       (for [u entities]
+        [:div {:style {:border "1px solid #ee8"
+                       :padding-top 2
+                       :margin 1
+                       :max-width 40}}
+         [:div (short-name (:name u) 6)]
+         [health-preview (:pv u) (:pv-max u)]])])])
 
 (defn action-box [selection]
   [:div {:style {:margin-top 5 :background-color "black"
@@ -219,8 +280,6 @@
            {:onClick #(swap! state (fn [s] (core/select-action a s)))
             :style {:padding 10 :margin 0 :width 111}}
            (core/action-name a)])))])
-         
-       
 
 (defn rts-app [props]
   [:div {:style {:color "white"}}
@@ -229,7 +288,7 @@
                  :width 820
                  :background-color "black"}}
     "RTS Demo" [:span {:style {:font-size "0.7em"
-                               :font-family "mono"
+                               :font-family "\"Courier New\", Courier, monospace"
                                :color "red"
                                :margin-left 90}}
                 "- Press W on the map to place a wall"]]
@@ -278,7 +337,7 @@
 
 (def timers (atom []))
 
-(reset! state (init-state))
+;(reset! state (init-state))
 
 (defn ^:dev/before-load stop []
   (doseq [t @timers]

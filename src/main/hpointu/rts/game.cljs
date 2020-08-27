@@ -1,5 +1,6 @@
 (ns hpointu.rts.game
-  (:require [hpointu.rts.core :as core]
+  (:require [clojure.string :as string]
+            [hpointu.rts.core :as core]
             [hpointu.rts.constants :refer [CELL_SIZE]]
             [hpointu.rts.path :refer [path]]
             [hpointu.rts.utils :refer [distance collides?]])
@@ -111,25 +112,30 @@
 (defn update-entity [state uid func & args]
   (update-in state [:entities uid] #(apply func % args)))
 
+(defn clear-selection [state]
+  (update-selected-entities state assoc :selected? false))
+
 (defn select-entities
-  [{:keys [entities] :as state} select-entity-pred append?]
+  [state select-entity-pred append?]
   (letfn
-    [(-select [uids]
-      (loop [cpt (if append? (count (get-selected-entities state)) 0)
-             current state
-             left uids]
-        (if (empty? left) current
-          (let [uid (first left)
-                select? (select-entity-pred (get entities uid))
-                selected (get-in entities [uid :selected?])
-                not-sel (if append? selected false)
-                sel (if selected (if append? selected cpt) cpt)
-                sel (if select? sel not-sel)
-                next-cpt (if (and sel (not selected)) (inc cpt) cpt)
-                next-state (update-entity current uid
-                                          assoc :selected? sel)]
-            (recur next-cpt next-state (rest left))))))]
-    (-select (map :uid (filter-entities :select state)))))
+    [(-select [{:keys [entities] :as state} uids]
+       (loop [cpt (if append? (count (get-selected-entities state)) 0)
+              current state
+              left uids]
+         (if (empty? left) current
+           (let [uid (first left)
+                 select? (select-entity-pred (get entities uid))
+                 selected (get-in entities [uid :selected?])
+                 not-sel (if append? selected false)
+                 sel (if selected (if append? selected cpt) cpt)
+                 sel (if select? sel not-sel)
+                 next-cpt (if (and sel (not selected)) (inc cpt) cpt)
+                 next-state (update-entity current uid
+                                           assoc :selected? sel)]
+             (recur next-cpt next-state (rest left))))))]
+
+    (let [s (if append? state (clear-selection state))]
+      (-select s (map :uid (filter-entities :select state))))))
 
 (defn move-selected-entities [{:keys [world entities] :as state} target]
 
@@ -280,7 +286,7 @@
 (defn ->base-unit [utype unit]
   (into
     {:utype utype
-     :name "NO"
+     :name (string/capitalize (name utype))
      :aabb [0.1 0.1 0.8 0.8]
      :goals []
      :waypoints []}
