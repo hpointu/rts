@@ -62,14 +62,17 @@
       (is (= [:wait 8] (get-in new-state [:entities 1 :goals 0])))))
 
   (testing "walking"
-    (let [state {:entities {1 {:pos [1 1] :goals [[:walk [2 2]]]}}
-                       :waypoints [[2 2]]
+    (let [state {:entities
+                 {1 {:pos [1 1]
+                     :walk-speed 3
+                     :goals [[:walk [2 2]]]
+                     :waypoints [[2 2]]}}
                  :world [[:g :g :g]
                          [:g :g :g]
                          [:g :g :g]]}
           new-state (game/update-actors state 100)]
-      (are [k v] (= (get-in new-state [:entities 1 k]) v)
-           :pos [1.3 1.3]))))
+      (is (= (get-in new-state [:entities 1 :pos])
+             [1.3 1.3])))))
           
 
 (deftest add-building
@@ -88,4 +91,22 @@
     (is (= expect (core/set-world-cells world tiles :w)))))
 
 
+(deftest component-filtering
+  (let [components [:speed :goals]
+        filter-fn (core/filter-by-components components)
+        e1 {:goals [] :name "Bob"}
+        e2 {:goals [] :speed 1 :name "Arthur"}]
+    (is (= [e2]
+           (vec (filter filter-fn [e1 e2]))))
+    (is (= [e1 e2]
+           (vec (filter (core/filter-by-components [:name]) [e1 e2]))))))
+
+(defmethod core/system-components :my-sys [] [:x :y])
+(deftest system-filtering
+  (let [state {:entities {1 {:name "Bob"}
+                          2 {:x 1 :y 2 :speed 3}
+                          3 {:name "Luc" :speed 1 :x 2}
+                          4 {:name "Coco" :x nil :y nil}
+                          5 {:name "Mo" :x 1 :y 0}}}]
+    (is (= 2 (count (game/filter-entities :my-sys state))))))
 

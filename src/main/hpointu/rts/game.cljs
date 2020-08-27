@@ -1,12 +1,13 @@
 (ns hpointu.rts.game
   (:require [hpointu.rts.core :as core]
+            [hpointu.rts.constants :refer [CELL_SIZE]]
             [hpointu.rts.path :refer [path]]
             [hpointu.rts.utils :refer [distance collides?]])
-  (:require-macros [hpointu.rts.macros :refer [update-selected-entities]]))
+  (:require-macros [hpointu.rts.macros
+                    :refer [update-selected-entities]]))
 
 (def VIEW_W 18)
 (def VIEW_H 14)
-
 
 (defn visible? [{:keys [camera]} [x y]]
   (let [[cx cy] camera]
@@ -95,8 +96,17 @@
         (update-in [:camera 1] + (* speed dy))
         (clamp-camera))))
 
-(defn get-selected-entities [{:keys [entities]}]
-  (filter :selected? (vals entities)))
+(defn get-selected-entities
+  ([{:keys [entities]}]
+   (filter :selected? (vals entities)))
+
+  ([{:keys [entities]} sort-key]
+   (filter :selected? (sort-by sort-key (vals entities)))))
+
+(defn filter-entities [system {:keys [entities]}]
+  (let [components (core/system-components system)
+        filter-fn (core/filter-by-components components)]
+    (filter filter-fn (vals entities))))
 
 (defn update-entity [state uid func & args]
   (update-in state [:entities uid] #(apply func % args)))
@@ -116,9 +126,10 @@
                 sel (if selected (if append? selected cpt) cpt)
                 sel (if select? sel not-sel)
                 next-cpt (if (and sel (not selected)) (inc cpt) cpt)
-                next-state (update-entity current uid assoc :selected? sel)]
+                next-state (update-entity current uid
+                                          assoc :selected? sel)]
             (recur next-cpt next-state (rest left))))))]
-    (-select (keys entities))))
+    (-select (map :uid (filter-entities :select state)))))
 
 (defn move-selected-entities [{:keys [world entities] :as state} target]
 
@@ -263,32 +274,85 @@
           (update-selected-entities
             update :goals conj [:build building pos])
           (dissoc :mouse-mode)))))
-      
-(defn ->base-building [building]
+
+;; TODO: Figure out where this game content data section should live
+;; Units
+(defn ->base-unit [utype unit]
   (into
-    {:build-progress 0
+    {:utype utype
+     :name "NO"
+     :aabb [0.1 0.1 0.8 0.8]
+     :goals []
+     :waypoints []}
+
+    unit))
+
+(defn ->square-shape [color size]
+  {:type :rect
+   :fill color
+   :w size
+   :h size
+   :x (/ (- CELL_SIZE size) 2)
+   :y (/ (- CELL_SIZE size) 2)})
+
+(defn ->circle-shape [color radius]
+  {:type :circle
+   :fill color
+   :r radius
+   :x (/ CELL_SIZE 2)
+   :y (/ CELL_SIZE 2)})
+
+(defmethod core/->unit :peon [utype]
+  (->base-unit
+    utype
+    {:walk-speed 3
+     :pv 20
+     :pv-max 20
+     :available-actions [(core/->Build :house)
+                         (core/->Build :farm)]
+     :render (->circle-shape "#0cf" 12)}))
+
+(defmethod core/->unit :knight [utype]
+  (->base-unit
+    utype
+    {:walk-speed 5
+     :pv 200
+     :pv-max 200
+     :available-actions [(core/->Build :hotel)]
+     :render (->square-shape "#0cf" 22)}))
+  
+;; Buildings
+(defn ->base-building [btype building]
+  (into
+    {:btype btype
+     :name (name btype)
+     :build-progress 0
      :build-time 10000
      :goals []}
-     
+
     building))
 
 (defmethod core/->building :farm [btype]
   (->base-building
-    {:btype btype
-     :pv-max 50
+    btype
+    {:pv-max 50
      :pv 50
      :size 2}))
 
 (defmethod core/->building :house [btype]
   (->base-building
-    {:btype btype
-     :pv-max 50
+    btype
+    {:pv-max 50
      :pv 50
      :size 1}))
 
 (defmethod core/->building :hotel [btype]
   (->base-building
-    {:btype btype
-     :pv-max 80
+    btype
+    {:pv-max 80
      :pv 80
      :size 3}))
+
+(defmethod core/system-components :select [_] [:aabb])
+(defmethod core/system-components :draw [_] [:pos :render :aabb])
+(defmethod core/system-components :draw-minimap [_] [:pos :preview])

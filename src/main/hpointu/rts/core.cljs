@@ -1,9 +1,10 @@
 (ns hpointu.rts.core
   (:require [hpointu.rts.utils :refer [distance]]))
       
+(defmulti ->unit (fn [utype] utype))
 (defmulti ->building (fn [btype] btype))
-
 (defmulti act (fn [state actor-uid action dt] (first action)))
+(defmulti system-components (fn [system] system))
 
 (defrecord Build [building])
 
@@ -24,6 +25,9 @@
 (defn get-uid []
   (swap! uids inc)
   @uids)
+
+(defn filter-by-components [components]
+  (fn [record] ((apply every-pred components) record)))
 
 (defn world-width [world]
   (count (get world 0)))
@@ -53,9 +57,9 @@
 
 (defn entity-moving? [{:keys [waypoints]}] (seq waypoints))
 
-(defn entity-aabb [{:keys [pos] :as entity}]
-  (let [[x y] pos]
-    [(+ 0.1 x) (+ 0.1 y) 0.8 0.8]))
+(defn entity-aabb [{:keys [pos aabb] :as entity}]
+  (let [[a b w h] aabb, [x y] pos]
+    [(+ a x) (+ b y) w h]))
 
 (defn add-goal [entity goal]
   (update entity :goals conj goal))

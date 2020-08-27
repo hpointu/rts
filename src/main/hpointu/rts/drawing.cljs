@@ -12,6 +12,9 @@
 (defn to-minimap-canvas [[x y] size]
   [(* size x) (* size y)])
 
+(defn to-cell-center [state [x y]]
+  (to-game-canvas state [(+ 0.5 x) (+ 0.5 y)]))
+
 (defn entity-box [state {:keys [pos] :as entity}]
   (let [[x y] (to-game-canvas state pos)]
     (into [] (map #(+ 5 %) [x y 20 20])))) 
@@ -72,9 +75,27 @@
               [x y] (to-minimap-canvas args size)]
           (g/render-item! ctx {:type :rect :x x :y y
                                :w size :h size :fill color}))))
- 
+
+(defn select-box [x y entity]
+  (let [[a b w h] (map #(* SIZE %) (:aabb entity))]
+    {:type :box
+     :color "yellow"
+     :x (+ x a -3)
+     :y (+ y b -3)
+     :w (+ w 6)
+     :h (+ h 6)}))
+
+(defn render-entity! [ctx state entity]
+  (let [[x y] (to-game-canvas state (:pos entity))
+        selected? (:selected? entity)]
+    (g/render-item! ctx (-> (:render entity)
+                            (update :x + x)
+                            (update :y + y)))
+    (when selected? (g/render-item! ctx (select-box x y entity)))))
+
 (defn draw!
-  [{:keys [world-updates mouse-mode world entities camera] :as state}
+  [{:keys [world-updates mouse-mode entities camera]
+    :as state}
    contexts]
 
   (defn context [k]
@@ -83,33 +104,21 @@
   (defn canvas [k]
     (:canvas (contexts k)))
 
+  ; static rendering update
   (doseq [wu world-updates]
     (draw-game-elem! state wu (contexts :game))
     (draw-minimap-elem! (context :minimap-off) state wu))
 
-  (doseq [{:keys [pos selected?] :as u} (vals entities)
-          :when (game/visible? state pos)]
-    (let [[x y] (map + (to-game-canvas state pos)
-                     [(/ SIZE 2) (/ SIZE 2)])
-          color "#0cf"]
-      (when selected?
-        (let [[x y w h] (entity-box state u)]
-          (g/render-item! (context :game)
-                          {:type :box
-                           :x (- x 3) :y (- y 3)
-                           :w (+ w 6) :h (+ h 6)
-                           :color "yellow"})))
-      (g/render-item! (context :game)
-                      {:type :circle :x x :y y :r 12 :fill color})
-      (when selected?
-        (g/render-item! (context :game)
-                        {:type :text
-                         :x x :y y :value selected?
-                         :size 20
-                         :color "black"}))))
+  ; dynamic game rendering
+  (doseq [entity (game/filter-entities :draw state)
+          :when (game/visible? state (:pos entity))]
+    (render-entity! (context :game) state entity))
+
+  ; Mouse mode rendering
   (when mouse-mode
     (core/draw-hover! mouse-mode (context :game) state))
 
+  ; selection box : TODO draw-hover! of nil mouse mode
   (when-let [rect (game/selector-rect state)]
     (let [[x y w h] (map #(* % SIZE) rect)
           [cx cy] (map #(* % SIZE) camera)]
@@ -117,6 +126,8 @@
                       {:type :box :x (- x cx) :y (- y cy)
                        :w w :h h
                        :color "yellow"})))
+
+  ; dynamic minimap rendering : TODO move to :preview system
   (let [[cx cy] camera]
     (.clearRect (context :minimap) 0 0
                 (.-width (canvas :minimap)) (.-height (canvas :minimap)))
