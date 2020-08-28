@@ -26,24 +26,33 @@
   [(:render-item u)])
 
 (defmethod core/render-items :building
-  [{:keys [name size label-size]}]
+  [{:keys [name size label-size active build-progress build-time]}]
   (let [size (* SIZE size)
-        [x y] (rect-center 0 0 size size)]
-    [{:type :hash-square
-      :color "#0cf"
-      :size size
-      :x 0 :y 0}
-     {:type :rect
-      :x (- x (/ size 2))
-      :y (- y (/ label-size 2) 4)
-      :fill "#08bb"
-      :w size
-      :h (+ label-size 6)}
-     {:type :text
-      :x x :y y
-      :color "white"
-      :size label-size
-      :value name}]))
+        completion (/ build-progress build-time)
+        hs (/ size 2)
+        [x y] (rect-center 0 0 size size)
+        pbar {:type :rect
+              :x (- x hs) :y (+ y 5)
+              :fill "yellow" :h 5 :w (* completion size)}]
+    (cond->
+      [{:type :hash-square
+        :color (if active "#0cf" "#ec0")
+        :size size
+        :x 0 :y 0}
+       {:type :rect
+        :x (- x (/ size 2))
+        :y (- y (/ label-size 2) 4)
+        :fill "#08bb"
+        :w size
+        :h (+ label-size 6)}
+       {:type :text
+        :x x :y y
+        :color "white"
+        :size label-size
+        :value name}]
+      (not active)
+      (conj pbar))))
+    
                   
 (defmethod ux/draw-hover! nil
   [[_ btype] ctx {:keys [camera ] :as state}]

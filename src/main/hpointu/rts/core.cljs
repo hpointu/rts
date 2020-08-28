@@ -53,7 +53,9 @@
   (update entity :goals conj goal))
 
 (defn set-goal [entity goal]
-  (assoc entity :goals [goal]))
+  (-> entity
+    (assoc :waypoints [])
+    (assoc :goals [goal])))
 
 (defn obstacle?
   ([world x y]

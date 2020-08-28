@@ -154,13 +154,13 @@
       extend?
       (extend-selection (core/entity-subtype e)))))
 
-(defn move-selected-entities [{:keys [world entities] :as state} target]
+(defn move-selected-entities
+  [{:keys [world entities mods] :as state} target]
 
   (defn set-entity-destination [{:keys [selected?] :as entity} targets]
-    (if selected?
-      (-> entity
-        (core/add-goal [:walk (nth targets selected?)]))
-      entity))
+    (if (contains? mods :append)
+      (core/add-goal entity [:walk (nth targets selected?)])
+      (core/set-goal entity [:walk (nth targets selected?)])))
 
   (let [size (count (get-selected-entities state))
         targets (core/get-free-zone world target size)]
@@ -182,14 +182,25 @@
         paths (map #(path start % cost-fn neighbour-fn) tiles)]
     (first (sort-by count paths))))
 
+(defmethod core/act :build [state uid [_ buid] dt]
+  (let [btime (get-in state [:entities buid :build-time])
+        bprogress (get-in state [:entities buid :build-progress])]
+    (if (< bprogress btime)
+      (update-in state [:entities buid :build-progress] + dt)
+      (-> state
+          (assoc-in [:entities buid :build-progress] btime)
+          (assoc-in [:entities buid :active] true)
+          (update-in [:entities uid :goals] (comp vec rest))))))
+
 (defmethod core/act :wait [state uid [_ t] dt]
   (if (> t 0)
     (update-in state [:entities uid :goals 0 1] - dt)
     (update-in state [:entities uid :goals] (comp vec rest))))
 
-(defmethod core/act :build [state uid [_ btype pos] dt]
-  (let [building (assoc (core/->building btype)
-                        :uid (core/get-uid)
+(defmethod core/act :place-building [state uid [_ btype pos] dt]
+  (let [buid (core/get-uid)
+        building (assoc (core/->building btype)
+                        :uid buid
                         :pos pos)
         tiles (core/building-tiles building)
         can? (free-tiles? state tiles)]
@@ -198,6 +209,7 @@
           (update :entities assoc (:uid building) building)
           (update :world #(core/set-world-cells % tiles :w))
           (update-in [:entities uid :goals] (comp vec rest))
+          (update-in [:entities uid :goals] #(vec (cons [:build buid] %)))
           (redraw tiles))
       state)))
 
@@ -294,11 +306,13 @@
         tmp (assoc (core/->building building) :pos pos)
         tiles (core/building-tiles tmp)
         path (nearest-tile-path world start tiles)]
-    (-> state
-        (move-selected-entities (second (reverse path)))
-        (update-selected-entities
-          update :goals conj [:build building pos])
-        (dissoc :mouse-mode))))
+    (if (free-tiles? state tiles)
+      (-> state
+          (move-selected-entities (second (reverse path)))
+          (update-selected-entities
+            update :goals conj [:place-building building pos])
+          (dissoc :mouse-mode))
+      state)))
 
 ;; TODO: Figure out where this game content data section should live
 ;; Units
@@ -356,7 +370,7 @@
       {:type :building
        :btype btype
        :name (string/capitalize (name btype))
-       :build-time 10000
+       :build-progress 0
        :aabb [0 0 size size]
        :render-as :building
        :goals []}
@@ -368,6 +382,7 @@
     btype
     {:pv-max 50
      :pv 50
+     :build-time 15000
      :label "Farm"
      :label-size 14
      :size 2}))
@@ -377,6 +392,7 @@
     btype
     {:pv-max 50
      :pv 50
+     :build-time 7500
      :label "House"
      :label-size 10
      :size 1}))
@@ -385,9 +401,10 @@
   (->base-building
     btype
     {:pv-max 80
+     :pv 80
+     :build-time 30000
      :label "Hotel"
      :label-size 14
-     :pv 80
      :size 3}))
 
 (defmethod core/system-components :select [_] [:aabb])
