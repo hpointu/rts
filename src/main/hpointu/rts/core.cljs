@@ -2,25 +2,11 @@
   (:require [hpointu.rts.utils :refer [distance]]))
       
 (defmulti ->unit (fn [u] u))
-(defmulti ->building (fn [u] u))
+(defmulti ->building (fn [b] b))
 (defmulti act (fn [state actor-uid action dt] (first action)))
-(defmulti system-components (fn [u] u))
+(defmulti system-components (fn [s] s))
 (defmulti entity-subtype :type)
 (defmulti render-items :render-as)
-
-(defrecord Build [building])
-
-(defprotocol UiAction
-  (action-name [this])
-  (select-action [this state]))
-
-(defprotocol MouseMode
-  (draw-hover! [this ctx state])
-  (left-click-start [this state pos])
-  (left-click-end [this state pos])
-  (right-click-start [this state pos])
-  (right-click-end [this state pos])
-  (drag [this state pos]))
 
 ;; TODO Probably move to game.cljc
 (def uids (atom 0))
@@ -139,5 +125,3 @@
             {:keys [limit visited zone] :as acc}
             (reduce reducer initial neighs)]
         (recur limit visited zone)))))
-
-(defrecord Building [btype pos])

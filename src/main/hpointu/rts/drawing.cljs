@@ -1,6 +1,7 @@
 (ns hpointu.rts.drawing
   (:require [hpointu.rts.core :as core]
             [hpointu.rts.game :as game]
+            [hpointu.rts.ux :as ux]
             [hpointu.rts.graphics :as g]))
 
 (def SIZE 35)
@@ -44,38 +45,47 @@
       :size label-size
       :value name}]))
                   
+(defmethod ux/draw-hover! nil
+  [[_ btype] ctx {:keys [camera ] :as state}]
+  (when-let [rect (game/selector-rect state)]
+    (let [[x y w h] (map #(* % SIZE) rect)
+          [cx cy] (map #(* % SIZE) camera)]
+      (g/render-item!
+        ctx
+        {:type :box
+         :color "yellow"
+         :x (- x cx) :y (- y cy)
+         :w w :h h}))))
 
-(extend-type core/Build
-  core/MouseMode
-  (core/draw-hover!
-    [{btype :building} ctx {:keys [hover world] :as state}]
-    (when hover
-      (let [size (:size (core/->building btype))
-            tiles (core/tiles hover size size)
-            text (first (name btype))
-            can? (game/free-tiles? state tiles)
-            color (if can? "green" "red")
-            [x y] (to-game-canvas state hover)]
-        (doseq [tile tiles]
-          (let [[x y] (to-game-canvas state tile)
-                [xl yl] tile
-                [xl yl] (to-game-canvas state [(+ 0.5 xl) (+ 0.55 yl)])]
-            (g/render-item!
-              ctx
-              {:type :box
-               :line-width 2
-               :x (+ 2 x)
-               :y (+ 2 y)
-               :w (- SIZE 4)
-               :h (- SIZE 4)
-               :color color})
-            (g/render-item!
-              ctx
-              {:type :text
-               :color color
-               :value text
-               :size 20
-               :x xl :y yl})))))))
+(defmethod ux/draw-hover! ::ux/build
+  [[_ btype] ctx {:keys [hover world] :as state}]
+  (when hover
+    (let [size (:size (core/->building btype))
+          tiles (core/tiles hover size size)
+          text (first (name btype))
+          can? (game/free-tiles? state tiles)
+          color (if can? "green" "red")
+          [x y] (to-game-canvas state hover)]
+      (doseq [tile tiles]
+        (let [[x y] (to-game-canvas state tile)
+              [xl yl] tile
+              [xl yl] (to-game-canvas state [(+ 0.5 xl) (+ 0.55 yl)])]
+          (g/render-item!
+            ctx
+            {:type :box
+             :line-width 2
+             :x (+ 2 x)
+             :y (+ 2 y)
+             :w (- SIZE 4)
+             :h (- SIZE 4)
+             :color color})
+          (g/render-item!
+            ctx
+            {:type :text
+             :color color
+             :value text
+             :size 20
+             :x xl :y yl}))))))
 
 (defn draw-tile! [ctx {:keys [mouse-mode world] :as state} x y size]
   (let [tile-color (if (core/obstacle? world x y) "gray" "#222")
@@ -141,17 +151,7 @@
     (render-entity! (context :game) state entity))
 
   ; Mouse mode rendering
-  (when mouse-mode
-    (core/draw-hover! mouse-mode (context :game) state))
-
-  ; selection box : TODO draw-hover! of nil mouse mode
-  (when-let [rect (game/selector-rect state)]
-    (let [[x y w h] (map #(* % SIZE) rect)
-          [cx cy] (map #(* % SIZE) camera)]
-      (g/render-item! (context :game)
-                      {:type :box :x (- x cx) :y (- y cy)
-                       :w w :h h
-                       :color "yellow"})))
+  (ux/draw-hover! mouse-mode (context :game) state)
 
   ; dynamic minimap rendering : TODO move to :preview system
   (let [[cx cy] camera]

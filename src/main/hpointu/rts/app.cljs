@@ -1,12 +1,13 @@
 (ns hpointu.rts.app
-  (:require [hpointu.rts.input :as io]
-            [hpointu.rts.core :as core]
-            [goog.string :as gstring]
+  (:require [hpointu.rts.core :as core]
             [hpointu.rts.drawing :as drawing]
+            [hpointu.rts.input :as io]
             [hpointu.rts.game :as game]
+            [hpointu.rts.utils :refer [collides?]]
+            [hpointu.rts.ux :as ux]
+            [goog.string :as gstring]
             [reagent.core :as r]
             [reagent.dom :as rdom]
-            [hpointu.rts.utils :refer [collides?]]
             [cljs.pprint]))
 
 (defonce debug? (r/atom false))
@@ -120,26 +121,27 @@
       (and (io/mouse-pressed? :left) (not (io/mouse-pressed? :right)))
       (if (not left-click)
         (-> state
-          (#(core/left-click-start mouse-mode % [x y]))
+          (#(ux/left-click-start mouse-mode % [x y]))
           (assoc :left-click [(int x) (int y)]))
-        (core/drag mouse-mode state [x y]))
+        (ux/drag mouse-mode state [x y]))
 
       (and (io/mouse-pressed? :right) (not (io/mouse-pressed? :left)))
       (if (not right-click)
         (-> state
-          (#(core/right-click-start mouse-mode % [x y]))
+          (#(ux/right-click-start mouse-mode % [x y]))
           (assoc :right-click [(int x) (int y)]))
-        (core/drag mouse-mode state [x y]))
+        (ux/drag mouse-mode state [x y]))
 
       :default
       (if left-click
-        (-> state
-            (#(core/left-click-end mouse-mode % [x y]))
-            (dissoc :left-click)
-            (dissoc :mods))
+        (do
+          (-> state
+              (#(ux/left-click-end mouse-mode % [x y]))
+              (dissoc :left-click)
+              (dissoc :mods)))
         (if right-click
           (-> state
-              (#(core/right-click-end mouse-mode % [x y]))
+              (#(ux/right-click-end mouse-mode % [x y]))
               (dissoc :right-click)
               (dissoc :mods))
           (dissoc state :mods))))))
@@ -293,9 +295,9 @@
        (for [a actions]
          ^{:key (hash a)}
           [:button
-           {:onClick #(swap! state (fn [s] (core/select-action a s)))
+           {:onClick #(swap! state (fn [s] (ux/ui-action-select a s)))
             :style {:padding 10 :margin 0 :width 111}}
-           (core/action-name a)])))])
+           (ux/ui-action-name a)])))])
 
 (defn rts-app [props]
   [:div {:style {:color "white"}}

@@ -3,7 +3,8 @@
             [hpointu.rts.core :as core]
             [hpointu.rts.constants :refer [CELL_SIZE]]
             [hpointu.rts.path :refer [path]]
-            [hpointu.rts.utils :refer [distance collides?]])
+            [hpointu.rts.utils :refer [distance collides?]]
+            [hpointu.rts.ux :as ux])
   (:require-macros [hpointu.rts.macros
                     :refer [update-selected-entities]]))
 
@@ -254,53 +255,50 @@
     (update-in state [:entities uid] move-entity)
     (update-in state [:entities uid :goals] (comp vec rest))))
 
-(extend-type nil
-  core/MouseMode
-  (left-click-start [_ state pos] (update-selector state pos pos))
-  (drag [_ {:keys [selector] :as state} pos]
-    (if selector
-      (let [[x y & _] selector] (update-selector state [x y] pos))
-      state))
-  (left-click-end [_ {:keys [mods] :as state} pos]
-    (let [hit? #(collides? (selector-rect state) (core/entity-aabb %))
-          [uid u] (first (filter (comp hit? second) (:entities state)))
-          subtype (when u (core/entity-subtype u))]
-      (cond-> state
-        true
-         (select-entities hit? (contains? mods :append))
-         (contains? mods :control)
-         (extend-selection subtype)
-         true
-         (dissoc :selector))))
-  (right-click-start [_ state pos]
-    (move-selected-entities state (map int pos)))
-  (right-click-end [_ state _] state))
+;; nil mouse mode
+(defmethod ux/left-click-start nil [_ state pos]
+  (update-selector state pos pos))
 
-(extend-type core/Build
-  core/UiAction
-  (action-name [{:keys [building]}]
-    (name building))
-  (select-action [{:keys [building] :as this} state]
-    (assoc state :mouse-mode this))
+(defmethod ux/right-click-start nil [_ state pos]
+  (move-selected-entities state (map int pos)))
 
-  core/MouseMode
-  (drag [_ state _] state)
-  (right-click-start [_ state _] state)
-  (right-click-end [_ state _] state)
-  (left-click-start [_ state _] state)
-  (left-click-end
-    [{:keys [building]} {:keys [world] :as state} pos]
-    (let [entity (first (get-selected-entities state))
-          start ((comp #(map int %) :pos) entity)
-          pos (map int pos)
-          tmp (assoc (core/->building building) :pos pos)
-          tiles (core/building-tiles tmp)
-          path (nearest-tile-path world start tiles)]
-      (-> state
-          (move-selected-entities (second (reverse path)))
-          (update-selected-entities
-            update :goals conj [:build building pos])
-          (dissoc :mouse-mode)))))
+(defmethod ux/right-click-end nil [_ state _] state)
+
+(defmethod ux/drag nil [_ {:keys [selector] :as state} pos]
+  (if selector
+    (let [[x y & _] selector] (update-selector state [x y] pos))
+    state))
+
+(defmethod ux/left-click-end nil [_ {:keys [mods] :as state} pos]
+  (let [hit? #(collides? (selector-rect state) (core/entity-aabb %))
+        [uid u] (first (filter (comp hit? second) (:entities state)))
+        subtype (when u (core/entity-subtype u))]
+    (cond-> state
+      true
+       (select-entities hit? (contains? mods :append))
+       (contains? mods :control)
+       (extend-selection subtype)
+       true
+       (dissoc :selector))))
+
+;; build mouse mode
+(defmethod ux/right-click-start ::ux/build [_ state pos] state)
+(defmethod ux/right-click-end ::ux/build [_ state _] state)
+(defmethod ux/drag ::ux/build [_ {:keys [selector] :as state} pos] state)
+(defmethod ux/left-click-start ::ux/build [_ state pos] state)
+(defmethod ux/left-click-end ::ux/build
+  [[_ building] {:keys [world] :as state} pos]
+  (let [entity (first (get-selected-entities state))
+        start ((comp #(map int %) :pos) entity)
+        pos (map int pos)
+        tmp (assoc (core/->building building) :pos pos)
+        tiles (core/building-tiles tmp)
+        path (nearest-tile-path world start tiles)]
+    (-> state
+        (move-selected-entities (second (reverse path)))
+        (update-selected-entities
+          update :goals conj [:build building pos])
+        (dissoc :mouse-mode))))
 
 ;; TODO: Figure out where this game content data section should live
 ;; Units
@@ -338,8 +336,8 @@
     {:walk-speed 3
      :pv 20
      :pv-max 20
-     :available-actions [(core/->Build :house)
-                         (core/->Build :farm)]
+     :available-actions [(ux/build :house)
+                         (ux/build :farm)]
      :render-item (->circle-shape "#0cf" 12)}))
 
 (defmethod core/->unit :knight [utype]
@@ -348,7 +346,7 @@
     {:walk-speed 5
      :pv 200
      :pv-max 200
-     :available-actions [(core/->Build :hotel)]
+     :available-actions [(ux/build :hotel)]
      :render-item (->square-shape "#0cf" 22)}))
   
 ;; Buildings
@@ -398,3 +396,9 @@
 
 (defmethod core/entity-subtype :unit [e] (:utype e))
 (defmethod core/entity-subtype :building [e] (:btype e))
+
+(defmethod ux/ui-action-name ::ux/build [[_ building]]
+  (name building))
+
+(defmethod ux/ui-action-select ::ux/build [action state]
+  (assoc state :mouse-mode action))

@@ -15,4 +15,4 @@ https://tedefump.gitlab.io/rts/
 - [ ] In-game resource collection
 - [ ] Actions prerequisites (resource based and more)
 - [ ] move UI stuff to its own namespace
-- [ ] Refacto Protocols to Multimethods
+- [X] Refacto Protocols to Multimethods
