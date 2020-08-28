@@ -8,7 +8,8 @@
   [ctx {:keys [x y color value size] :as item}]
   (doto ctx
     (aset "fillStyle" color)
-    (aset "font" (str size "px Mono"))
+    (aset
+      "font" (str size "px \"Courier New\", Courier, monospace"))
     (aset "textBaseline" "middle")
     (aset "textAlign" "center")
     (.fillText value x y)))
@@ -32,6 +33,7 @@
       (.moveTo (+ x hw) (- y hw))
       (.lineTo (- x hw) (+ y hw))
       (aset "strokeStyle" color)
+      (.stroke)
       (.closePath))))
 
 (defmethod render-item! :box render-box
@@ -66,3 +68,17 @@
     (.stroke)
     (.closePath)))
 
+(defmethod render-item! :hash-square render-hash-rect
+  [ctx {:keys [x y size color space]
+        :or {space 10}}]
+  (.beginPath ctx)
+  (.rect ctx (+ 1 x) (+ 1 y) (- size 2) (- size 2))
+  (doseq [p (range space (* 2 size) space)]
+    (doto ctx
+      (.moveTo (+ -2 (min (+ x p) (+ size x)))
+               (+ 2 (max y (+ y (- p size)))))
+      (.lineTo (+ 2 (max x (+ x (- p size))))
+               (+ -2 (min (+ y size) (+ y p))))))
+  (aset ctx "strokeStyle" color)
+  (.stroke ctx)
+  (.closePath ctx))

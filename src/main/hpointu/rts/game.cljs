@@ -116,26 +116,42 @@
   (update-selected-entities state assoc :selected? false))
 
 (defn select-entities
-  [state select-entity-pred append?]
-  (letfn
-    [(-select [{:keys [entities] :as state} uids]
-       (loop [cpt (if append? (count (get-selected-entities state)) 0)
-              current state
-              left uids]
-         (if (empty? left) current
-           (let [uid (first left)
-                 select? (select-entity-pred (get entities uid))
-                 selected (get-in entities [uid :selected?])
-                 not-sel (if append? selected false)
-                 sel (if selected (if append? selected cpt) cpt)
-                 sel (if select? sel not-sel)
-                 next-cpt (if (and sel (not selected)) (inc cpt) cpt)
-                 next-state (update-entity current uid
-                                           assoc :selected? sel)]
-             (recur next-cpt next-state (rest left))))))]
+  ([state select-entity-pred]
+   (select-entities state select-entity-pred false))
 
-    (let [s (if append? state (clear-selection state))]
-      (-select s (map :uid (filter-entities :select state))))))
+  ([state select-entity-pred append?]
+   (letfn
+     [(-select [{:keys [entities] :as state} uids]
+        (loop [cpt (if append? (count (get-selected-entities state)) 0)
+               current state
+               left uids]
+          (if (empty? left) current
+            (let [uid (first left)
+                  select? (select-entity-pred (get entities uid))
+                  selected (get-in entities [uid :selected?])
+                  not-sel (if append? selected false)
+                  sel (if selected (if append? selected cpt) cpt)
+                  sel (if select? sel not-sel)
+                  next-cpt (if (and sel (not selected)) (inc cpt) cpt)
+                  next-state (update-entity current uid
+                                            assoc :selected? sel)]
+              (recur next-cpt next-state (rest left))))))]
+
+     (let [s (if append? state (clear-selection state))]
+       (-select s (map :uid (filter-entities :select state)))))))
+
+(defn extend-selection [{:keys [mods] :as state} subtype]
+  (select-entities
+    state
+    #(= (core/entity-subtype %) subtype)
+    (contains? mods :append)))
+
+(defn select-entity-uid [state uid extend?]
+  (let [e (get-in state [:entities uid])]
+    (cond-> state true
+      (select-entities #(= uid (:uid %)))
+      extend?
+      (extend-selection (core/entity-subtype e)))))
 
 (defn move-selected-entities [{:keys [world entities] :as state} target]
 
@@ -246,11 +262,16 @@
       (let [[x y & _] selector] (update-selector state [x y] pos))
       state))
   (left-click-end [_ {:keys [mods] :as state} pos]
-    (-> state
-        (select-entities
-          #(collides? (selector-rect state) (core/entity-aabb %))
-          (contains? mods :append))
-        (dissoc :selector)))
+    (let [hit? #(collides? (selector-rect state) (core/entity-aabb %))
+          [uid u] (first (filter (comp hit? second) (:entities state)))
+          subtype (when u (core/entity-subtype u))]
+      (cond-> state
+        true
+         (select-entities hit? (contains? mods :append))
+         (contains? mods :control)
+         (extend-selection subtype)
+         true
+         (dissoc :selector))))
   (right-click-start [_ state pos]
     (move-selected-entities state (map int pos)))
   (right-click-end [_ state _] state))
@@ -283,16 +304,6 @@
 
 ;; TODO: Figure out where this game content data section should live
 ;; Units
-(defn ->base-unit [utype unit]
-  (into
-    {:utype utype
-     :name (string/capitalize (name utype))
-     :aabb [0.1 0.1 0.8 0.8]
-     :goals []
-     :waypoints []}
-
-    unit))
-
 (defn ->square-shape [color size]
   {:type :rect
    :fill color
@@ -308,6 +319,19 @@
    :x (/ CELL_SIZE 2)
    :y (/ CELL_SIZE 2)})
 
+(defn ->base-unit [utype unit]
+  (into
+    {:type :unit
+     :utype utype
+     :name (string/capitalize (name utype))
+     :aabb [0.1 0.1 0.8 0.8]
+     :goals []
+     :render-as :unit
+     :waypoints []}
+
+    unit))
+
+
 (defmethod core/->unit :peon [utype]
   (->base-unit
     utype
@@ -316,7 +340,7 @@
      :pv-max 20
      :available-actions [(core/->Build :house)
                          (core/->Build :farm)]
-     :render (->circle-shape "#0cf" 12)}))
+     :render-item (->circle-shape "#0cf" 12)}))
 
 (defmethod core/->unit :knight [utype]
   (->base-unit
@@ -325,24 +349,29 @@
      :pv 200
      :pv-max 200
      :available-actions [(core/->Build :hotel)]
-     :render (->square-shape "#0cf" 22)}))
+     :render-item (->square-shape "#0cf" 22)}))
   
 ;; Buildings
 (defn ->base-building [btype building]
-  (into
-    {:btype btype
-     :name (name btype)
-     :build-progress 0
-     :build-time 10000
-     :goals []}
+  (let [size (:size building)]
+    (into
+      {:type :building
+       :btype btype
+       :name (string/capitalize (name btype))
+       :build-time 10000
+       :aabb [0 0 size size]
+       :render-as :building
+       :goals []}
 
-    building))
+      building)))
 
 (defmethod core/->building :farm [btype]
   (->base-building
     btype
     {:pv-max 50
      :pv 50
+     :label "Farm"
+     :label-size 14
      :size 2}))
 
 (defmethod core/->building :house [btype]
@@ -350,15 +379,22 @@
     btype
     {:pv-max 50
      :pv 50
+     :label "House"
+     :label-size 10
      :size 1}))
 
 (defmethod core/->building :hotel [btype]
   (->base-building
     btype
     {:pv-max 80
+     :label "Hotel"
+     :label-size 14
      :pv 80
      :size 3}))
 
 (defmethod core/system-components :select [_] [:aabb])
-(defmethod core/system-components :draw [_] [:pos :render :aabb])
+(defmethod core/system-components :draw [_] [:pos :render-as :aabb])
 (defmethod core/system-components :draw-minimap [_] [:pos :preview])
+
+(defmethod core/entity-subtype :unit [e] (:utype e))
+(defmethod core/entity-subtype :building [e] (:btype e))

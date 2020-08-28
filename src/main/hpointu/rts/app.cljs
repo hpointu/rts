@@ -101,10 +101,13 @@
        :context (selector contexts)})))
 
 (defn get-modifiers []
-  (if (or (io/key-pressed? "ShiftLeft")
-          (io/key-pressed? "ShiftRight"))
-    #{:append}
-    #{}))
+  (cond-> #{}
+    (or (io/key-pressed? "ShiftLeft")
+        (io/key-pressed? "ShiftRight"))
+    (conj :append)
+    (or (io/key-pressed? "ControlLeft") 
+        (io/key-pressed? "ControlRight"))
+    (conj :control)))
 
 
 (defn handle-mouse-game
@@ -195,6 +198,10 @@
                                         (dissoc :world-updates)
                                         (dissoc :entities)))))
 
+(defn click-on-portrait [entity event]
+  (let [extend? event.ctrlKey]
+    (swap! state game/select-entity-uid (:uid entity) extend?)))
+
 (defn short-name [n s]
   (if (> (count n) s)
     (str (subs n 0 s) ".")
@@ -263,10 +270,13 @@
                      :font-size 9
                      :flex-wrap "wrap"}}
        (for [u entities]
+        ^{:key (str "profile-" (:uid u))}
         [:div {:style {:border "1px solid #ee8"
                        :padding-top 2
+                       :cursor "pointer"
                        :margin 1
-                       :max-width 40}}
+                       :max-width 40}
+               :onClick #(click-on-portrait u %)} 
          [:div (short-name (:name u) 6)]
          [health-preview (:pv u) (:pv-max u)]])])])
 
@@ -306,7 +316,9 @@
       [:canvas {:id "minimap"
                 :width 223
                 :height 223
-                :style {:background-color "#111" :width 223 :height 223}}]
+                :style {:background-color "#111"
+                        :cursor "crosshair"
+                        :width 223 :height 223}}]
       [profile-box (game/get-selected-entities @state)]
       [action-box (game/get-selected-entities @state)]
       (when (:mouse-mode @state)
@@ -339,6 +351,7 @@
     (do (reset! current-time t)
         (reset! state new-state)
         (reset! debug? (io/key-pressed? "Comma"))
+        (io/clear!)
         (swap! frame-counter inc))))
 
 (def timers (atom []))

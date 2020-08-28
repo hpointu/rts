@@ -1,10 +1,12 @@
 (ns hpointu.rts.core
   (:require [hpointu.rts.utils :refer [distance]]))
       
-(defmulti ->unit (fn [utype] utype))
-(defmulti ->building (fn [btype] btype))
+(defmulti ->unit (fn [u] u))
+(defmulti ->building (fn [u] u))
 (defmulti act (fn [state actor-uid action dt] (first action)))
-(defmulti system-components (fn [system] system))
+(defmulti system-components (fn [u] u))
+(defmulti entity-subtype :type)
+(defmulti render-items :render-as)
 
 (defrecord Build [building])
 

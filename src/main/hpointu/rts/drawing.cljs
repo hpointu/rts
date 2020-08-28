@@ -12,43 +12,70 @@
 (defn to-minimap-canvas [[x y] size]
   [(* size x) (* size y)])
 
-(defn to-cell-center [state [x y]]
-  (to-game-canvas state [(+ 0.5 x) (+ 0.5 y)]))
+(defn rect-center [x y w h]
+  [(- (+ x w) (/ w 2))
+   (- (+ y h) (/ h 2))])
 
 (defn entity-box [state {:keys [pos] :as entity}]
   (let [[x y] (to-game-canvas state pos)]
     (into [] (map #(+ 5 %) [x y 20 20])))) 
 
+
+(defmethod core/render-items :unit [u]
+  [(:render-item u)])
+
+(defmethod core/render-items :building
+  [{:keys [name size label-size]}]
+  (let [size (* SIZE size)
+        [x y] (rect-center 0 0 size size)]
+    [{:type :hash-square
+      :color "#0cf"
+      :size size
+      :x 0 :y 0}
+     {:type :rect
+      :x (- x (/ size 2))
+      :y (- y (/ label-size 2) 4)
+      :fill "#08bb"
+      :w size
+      :h (+ label-size 6)}
+     {:type :text
+      :x x :y y
+      :color "white"
+      :size label-size
+      :value name}]))
+                  
+
 (extend-type core/Build
   core/MouseMode
   (core/draw-hover!
     [{btype :building} ctx {:keys [hover world] :as state}]
-    (let [size (:size (core/->building btype))
-          tiles (core/tiles hover size size)
-          text (first (name btype))
-          can? (game/free-tiles? state tiles)
-          color (if can? "green" "red")
-          [x y] (to-game-canvas state hover)]
-      (doseq [tile tiles]
-        (let [[x y] (to-game-canvas state tile)
-              [xl yl] tile
-              [xl yl] (to-game-canvas state [(+ 0.5 xl) (+ 0.55 yl)])]
-          (g/render-item!
-            ctx
-            {:type :box
-             :line-width 2
-             :x (+ 2 x)
-             :y (+ 2 y)
-             :w (- SIZE 4)
-             :h (- SIZE 4)
-             :color color})
-          (g/render-item!
-            ctx
-            {:type :text
-             :color color
-             :value text
-             :size 20
-             :x xl :y yl}))))))
+    (when hover
+      (let [size (:size (core/->building btype))
+            tiles (core/tiles hover size size)
+            text (first (name btype))
+            can? (game/free-tiles? state tiles)
+            color (if can? "green" "red")
+            [x y] (to-game-canvas state hover)]
+        (doseq [tile tiles]
+          (let [[x y] (to-game-canvas state tile)
+                [xl yl] tile
+                [xl yl] (to-game-canvas state [(+ 0.5 xl) (+ 0.55 yl)])]
+            (g/render-item!
+              ctx
+              {:type :box
+               :line-width 2
+               :x (+ 2 x)
+               :y (+ 2 y)
+               :w (- SIZE 4)
+               :h (- SIZE 4)
+               :color color})
+            (g/render-item!
+              ctx
+              {:type :text
+               :color color
+               :value text
+               :size 20
+               :x xl :y yl})))))))
 
 (defn draw-tile! [ctx {:keys [mouse-mode world] :as state} x y size]
   (let [tile-color (if (core/obstacle? world x y) "gray" "#222")
@@ -88,9 +115,8 @@
 (defn render-entity! [ctx state entity]
   (let [[x y] (to-game-canvas state (:pos entity))
         selected? (:selected? entity)]
-    (g/render-item! ctx (-> (:render entity)
-                            (update :x + x)
-                            (update :y + y)))
+    (doseq [item (core/render-items entity)]
+      (g/render-item! ctx (-> item (update :x + x) (update :y + y))))
     (when selected? (g/render-item! ctx (select-box x y entity)))))
 
 (defn draw!
