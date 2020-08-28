@@ -7,10 +7,11 @@ https://tedefump.gitlab.io/rts/
 
 - [X] draw and select buildings
 - [X] select entity from profile list
-- [ ] append or reset destination on right click
+- [X] append or reset destination on right click
 - [ ] minimap drawing as proper system
 - [ ] entities with static drawing
-- [ ] building (pending) action
+- [X] building (pending) action
+- [ ] Continue interrupted building
 - [ ] building available actions (spawn a peon for example)
 - [ ] In-game resource collection
 - [ ] Actions prerequisites (resource based and more)
