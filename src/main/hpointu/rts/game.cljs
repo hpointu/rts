@@ -210,10 +210,10 @@
     (core/act state actor-uid current-goal dt)
     state))
 
-(defn update-actors [{:keys [entities] :as state} dt]
+(defn update-actors [state dt]
   (letfn [(actor-reducer [prev-state actor]
-            (update-actor prev-state (first actor) dt))]
-    (reduce actor-reducer state entities)))
+            (update-actor prev-state (:uid actor) dt))]
+    (reduce actor-reducer state (system-entities :actors state))))
 
 (defmethod core/act :build [state uid [_ buid] dt]
   (let [btime (get-in state [:entities buid :build-time])
@@ -455,6 +455,7 @@
      :label-size 14
      :size 3}))
 
+(defmethod core/system-components :actors [_] [:goals])
 (defmethod core/system-components :select [_] [:aabb :pos])
 (defmethod core/system-components :draw [_] [:pos :render-as :aabb])
 (defmethod core/system-components :draw-minimap [_] [:pos :preview])
