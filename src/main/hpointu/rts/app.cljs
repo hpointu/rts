@@ -263,6 +263,7 @@
         (str (:name u) " - " (:uid u))]
        [health-bar (:pv u) (:pv-max u)]
        [:pre {:style {:padding "0 5px"}}
+        (str (:waypoints u) "\n")
         (for [g (:goals u)] (str g "\n"))]]
       
       [:div {:style {:display "flex"

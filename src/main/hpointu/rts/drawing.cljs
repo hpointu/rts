@@ -155,7 +155,7 @@
     (draw-minimap-elem! (context :minimap-off) state wu))
 
   ; dynamic game rendering
-  (doseq [entity (game/filter-entities :draw state)
+  (doseq [entity (game/system-entities :draw state)
           :when (game/visible? state (:pos entity))]
     (render-entity! (context :game) state entity))
 

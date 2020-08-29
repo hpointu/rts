@@ -26,6 +26,10 @@
   (is (core/in-world? (core/->world 4 3) 2 2))
   (is (core/in-world? (core/->world 4 3) [2 2])))
 
+(deftest on-cell
+  (is (core/on-cell? [2 3] [2.3 3.1]))
+  (is (not (core/on-cell? [2 3] [1.9 3.1]))))
+
 (deftest neighbours
   (is (= (set (core/neighbours (core/->world 3 3) [0 0]))
          #{[1 0] [1 1] [0 1]})))
@@ -49,10 +53,14 @@
                [:g :g :g :g :g]
                [:g :g :w :g :g]
                [:g :w :g :g :g]
-               [:w :w :g :w :w]]]
-    (is (= [[1 1]] (core/get-free-zone world [1 1] 1)))
+               [:w :w :g :w :w]]
+        free? (fn [t] (not (core/obstacle? world t)))]
+    (is (= [[1 1]]
+           (core/get-free-zone world [1 1] 1 free?)))
     (is (= #{[1 1] [0 0] [0 1] [0 2] [1 2] [2 1] [3 1]}
-           (set (core/get-free-zone world [1 1] 7))))))
+           (set (core/get-free-zone world [1 1] 7 free?))))
+    (is (= #{[3 3] [4 3]}
+           (set (core/get-free-zone world [4 4] 2 free?))))))
 
 
 (deftest actors
@@ -108,5 +116,11 @@
                           3 {:name "Luc" :speed 1 :x 2}
                           4 {:name "Coco" :x nil :y nil}
                           5 {:name "Mo" :x 1 :y 0}}}]
-    (is (= 2 (count (game/filter-entities :my-sys state))))))
+    (is (= 2 (count (game/system-entities :my-sys state))))))
+
+(deftest entity-picking
+  (let [state {:entities {1 {:uid 1 :aabb [0 0 1 1] :pos [3.5 4.2]}
+                          2 {:uid 2 :aabb [0 0 1 1] :pos [2.3 2.9]}}}]
+    (is (empty? (game/pick-entities state [3 2])))
+    (is (= 2 (:uid (first (game/pick-entities state [3.1 3.2])))))))
 

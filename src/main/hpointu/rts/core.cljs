@@ -54,8 +54,16 @@
 
 (defn set-goal [entity goal]
   (-> entity
-    (assoc :waypoints [])
-    (assoc :goals [goal])))
+      (assoc :waypoints [])
+      (assoc :goals [goal])))
+
+(defn replace-current-goal [entity goal]
+  (-> entity
+      (assoc :waypoints [])
+      (update :goals (comp vec #(cons goal %) rest))))
+
+(defn goals-by-type [goal-type entity]
+  (filter #(= goal-type (first %)) (:goals entity)))
 
 (defn obstacle?
   ([world x y]
@@ -80,6 +88,9 @@
    (and (< -1 x (world-width world))
         (< -1 y (world-height world)))))
 
+(defn on-cell? [cell [x y]]
+  (every? true? (map = cell [(int x) (int y)])))
+
 
 (defn neighbours [world [x y]]
   (filter
@@ -101,23 +112,21 @@
 (defn built? [{:keys [build-time build-progress]}]
   (= build-progress build-time))
 
-(defn get-free-zone [world pos size]
+(defn get-free-zone [world pos size free-pred]
 
   (defn reducer [{:keys [visited zone] :as acc} n]
     (if (or (contains? visited n)
             (>= (count zone) size))
       acc
-      (let [[x y] n
-            up (-> acc
+      (let [up (-> acc
                   (update :limit conj n)
                   (update :visited conj n))]
-        (if (obstacle? world x y)
-          up
+        (if (not (free-pred n)) up
           (update up :zone conj n)))))
 
   (loop [limit #queue [pos]
-         visited #{pos}
-         zone [pos]]
+         visited #{}
+         zone []]
     (if (>= (count zone) size)
       (vec (take size zone))
       (let [current (peek limit)
@@ -125,5 +134,5 @@
             neighs (sort-by #(distance pos %) (neighbours world current))
             initial {:limit limit :visited visited :zone zone}
             {:keys [limit visited zone] :as acc}
-            (reduce reducer initial neighs)]
+            (reduce reducer initial (conj neighs current))]
         (recur limit visited zone)))))

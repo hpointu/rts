@@ -3,13 +3,16 @@
             [hpointu.rts.core :as core]
             [hpointu.rts.constants :refer [CELL_SIZE]]
             [hpointu.rts.path :refer [path]]
-            [hpointu.rts.utils :refer [distance collides?]]
+            [hpointu.rts.utils :refer [distance collides? in-rect?]]
             [hpointu.rts.ux :as ux])
   (:require-macros [hpointu.rts.macros
                     :refer [update-selected-entities]]))
 
 (def VIEW_W 18)
 (def VIEW_H 14)
+
+(defmulti as-target (fn [entity state] (:type entity)))
+(defmethod as-target :default [_ state] state)
 
 (defn visible? [{:keys [camera]} [x y]]
   (let [[cx cy] camera]
@@ -36,9 +39,29 @@
      (fn [u] (= ((comp vec #(map js/Math.round %) :pos) u) pos))
      (remove ignore-pred (vals entities)))))
 
-(defn free-tiles? [state tiles]
-  (not-any? #(or (core/obstacle? (:world state) %1)
-                 (busy-cell? state %1)) tiles))
+(defn free-tiles?
+  ([state tiles free-tiles]
+   (let [ignore (fn [cell] (some #(= % cell) free-tiles))]
+     (not-any? #(and (not (ignore %1))
+                     (or (core/obstacle? (:world state) %1)
+                         (busy-cell? state %1)))
+               tiles)))
+  ([state tiles]
+   (free-tiles? state tiles [])))
+
+(defn reserved-walk-targets [{:keys [entities]}]
+  (apply
+    concat
+    (map (fn [e] (map second (core/goals-by-type :walk e)))
+         (vals entities))))
+
+(defn cell-reserved? [state cell]
+  (some #(= cell %) (reserved-walk-targets state)))
+
+(defn find-walk-targets [{:keys [world] :as state} target size origins]
+  (let [free? (fn [tile] (and (free-tiles? state [tile] origins)
+                              (not (cell-reserved? state tile))))]
+    (core/get-free-zone world target size free?)))
 
 (defn redraw [{:keys [world] :as state} tiles]
   (update state :world-updates into (for [t tiles] (cell-redraw t))))
@@ -105,10 +128,13 @@
   ([{:keys [entities]} sort-key]
    (filter :selected? (sort-by sort-key (vals entities)))))
 
-(defn filter-entities [system {:keys [entities]}]
+(defn system-entities [system {:keys [entities]}]
   (let [components (core/system-components system)
         filter-fn (core/filter-by-components components)]
     (filter filter-fn (vals entities))))
+
+(defn entity-can-build [entity btype]
+  (some #(= (ux/build btype) %) (:available-actions entity)))
 
 (defn update-entity [state uid func & args]
   (update-in state [:entities uid] #(apply func % args)))
@@ -139,7 +165,7 @@
               (recur next-cpt next-state (rest left))))))]
 
      (let [s (if append? state (clear-selection state))]
-       (-select s (map :uid (filter-entities :select state)))))))
+       (-select s (map :uid (system-entities :select state)))))))
 
 (defn extend-selection [{:keys [mods] :as state} subtype]
   (select-entities
@@ -154,6 +180,17 @@
       extend?
       (extend-selection (core/entity-subtype e)))))
 
+(defn nearest-tile-path [world start tiles]
+  (let [neighbour-fn #(core/neighbours world %1)
+        cost-fn #(core/cost world % %)
+        paths (map #(path start % cost-fn neighbour-fn) tiles)]
+    (first (sort-by count paths))))
+
+(defn pick-entities [state pos]
+  (filter
+    #(in-rect? (core/entity-aabb %) pos)
+    (system-entities :select state)))
+
 (defn move-selected-entities
   [{:keys [world entities mods] :as state} target]
 
@@ -162,9 +199,11 @@
       (core/add-goal entity [:walk (nth targets selected?)])
       (core/set-goal entity [:walk (nth targets selected?)])))
 
-  (let [size (count (get-selected-entities state))
-        targets (core/get-free-zone world target size)]
-    (update-selected-entities state set-entity-destination targets)))
+  (let [size (count (get-selected-entities state)) 
+        origins (map :pos (get-selected-entities state))
+        targets (find-walk-targets state target size origins)]
+    (-> state
+      (update-selected-entities set-entity-destination targets))))
 
 (defn update-actor [state actor-uid dt]
   (if-let [current-goal (get-in state [:entities actor-uid :goals 0])]
@@ -175,12 +214,6 @@
   (letfn [(actor-reducer [prev-state actor]
             (update-actor prev-state (first actor) dt))]
     (reduce actor-reducer state entities)))
-
-(defn nearest-tile-path [world start tiles]
-  (let [neighbour-fn #(core/neighbours world %1)
-        cost-fn #(core/cost world % %)
-        paths (map #(path start % cost-fn neighbour-fn) tiles)]
-    (first (sort-by count paths))))
 
 (defmethod core/act :build [state uid [_ buid] dt]
   (let [btime (get-in state [:entities buid :build-time])
@@ -229,9 +262,10 @@
   (defn calculate-new-path [{:keys [pos] :as entity}]
     (if-let [path (get-path pos)]
       (assoc entity :waypoints path)
-      (-> entity
-         (assoc :waypoints [])
-         (update :goals #(into [[:wait 1000]] %)))))
+      (let [targets (find-walk-targets state target 1 [pos])
+            goal [:walk (first targets)]]
+        (core/replace-current-goal entity goal))))
+
   (defn dir [a b]
     (if (< a b) 1 -1))
 
@@ -267,12 +301,26 @@
     (update-in state [:entities uid] move-entity)
     (update-in state [:entities uid :goals] (comp vec rest))))
 
+
+(defn contribute-to-build [state buid unit-uid]
+  (update-in state [:entities unit-uid :goals] conj [:build buid]))
+
+(defmethod as-target :building [{:keys [active btype uid]} state]
+  (let [can-build #(entity-can-build % btype)
+        selected (get-selected-entities state)]
+    (reduce
+      #(contribute-to-build %1 uid (:uid %2))
+       state
+       (filter can-build selected))))
+
 ;; nil mouse mode
 (defmethod ux/left-click-start nil [_ state pos]
   (update-selector state pos pos))
 
 (defmethod ux/right-click-start nil [_ state pos]
-  (move-selected-entities state (map int pos)))
+  (let [[target & _] (pick-entities state pos)]
+    (as-target target
+      (move-selected-entities state (map int pos)))))
 
 (defmethod ux/right-click-end nil [_ state _] state)
 
@@ -382,7 +430,7 @@
     btype
     {:pv-max 50
      :pv 50
-     :build-time 15000
+     :build-time 10000
      :label "Farm"
      :label-size 14
      :size 2}))
@@ -402,12 +450,12 @@
     btype
     {:pv-max 80
      :pv 80
-     :build-time 30000
+     :build-time 15000
      :label "Hotel"
      :label-size 14
      :size 3}))
 
-(defmethod core/system-components :select [_] [:aabb])
+(defmethod core/system-components :select [_] [:aabb :pos])
 (defmethod core/system-components :draw [_] [:pos :render-as :aabb])
 (defmethod core/system-components :draw-minimap [_] [:pos :preview])
 
