@@ -16,8 +16,8 @@
 
 (defn visible? [{:keys [camera]} [x y]]
   (let [[cx cy] camera]
-    (and (< x (+ cx VIEW_W))
-         (< y (+ cy VIEW_H)))))
+    (and (< cx x (+ cx VIEW_W))
+         (< cy y (+ cy VIEW_H)))))
 
 (defn visible-range [[cx cy :as camera]]
   (for [x (range (int cx) (int (+ cx VIEW_W)))

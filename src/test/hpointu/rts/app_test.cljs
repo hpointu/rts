@@ -4,6 +4,10 @@
             [hpointu.rts.game :as game]
             [hpointu.rts.utils :as utils]))
 
+(deftest visible
+  (is (game/visible? {:camera [1 1]} [2 2]))
+  (is (not (game/visible? {:camera [3 1]} [2 2]))))
+
 (deftest test-obstacles
   (let [world [[:g :g :g :g]
                [:g :g :g :w]]]  ; wall (3, 1)
@@ -65,13 +69,14 @@
 
 (deftest actors
   (testing "waiting"
-    (let [state {:entities {1 {:goals [[:wait 10]]}}}
+    (let [state {:entities {1 {:uid 1 :goals [[:wait 10]]}}}
           new-state (game/update-actors state 2)]
       (is (= [:wait 8] (get-in new-state [:entities 1 :goals 0])))))
 
   (testing "walking"
     (let [state {:entities
                  {1 {:pos [1 1]
+                     :uid 1
                      :walk-speed 3
                      :goals [[:walk [2 2]]]
                      :waypoints [[2 2]]}}
@@ -116,7 +121,9 @@
                           3 {:name "Luc" :speed 1 :x 2}
                           4 {:name "Coco" :x nil :y nil}
                           5 {:name "Mo" :x 1 :y 0}}}]
-    (is (= 2 (count (game/system-entities :my-sys state))))))
+    (is (= 2 (count (game/system-entities :my-sys state)))))
+  (let [state {:entities {1 {:goals []}}}]
+    (is (= 1 (count (game/system-entities :actors state))))))
 
 (deftest entity-picking
   (let [state {:entities {1 {:uid 1 :aabb [0 0 1 1] :pos [3.5 4.2]}
