@@ -305,6 +305,7 @@
 (defn contribute-to-build [state buid unit-uid]
   (update-in state [:entities unit-uid :goals] conj [:build buid]))
 
+;; TODO: should also dispatch on mouse-mode value
 (defmethod as-target :building [{:keys [active btype uid]} state]
   (let [can-build #(entity-can-build % btype)
         selected (get-selected-entities state)]

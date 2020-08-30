@@ -4,11 +4,17 @@
             [hpointu.rts.input :as io]
             [hpointu.rts.game :as game]
             [hpointu.rts.utils :refer [collides?]]
+            [hpointu.rts.resources :as res]
             [hpointu.rts.ux :as ux]
             [goog.string :as gstring]
             [reagent.core :as r]
             [reagent.dom :as rdom]
+            [cljs.core.async :refer [<!] :refer-macros [go]]
             [cljs.pprint]))
+
+(def RMAP
+  {:world "img/maps/level_00.png"})
+   
 
 (defonce debug? (r/atom false))
 (def current-time (atom (.now js/Date)))
@@ -52,7 +58,7 @@
    (->unit :peon 9 8)])
   
 
-(defn init-state []
+(defn init-state [resources]
   {:world (core/->world 74 74)
    :camera [0 0]
    :buildings []
@@ -381,7 +387,7 @@
 
 (defn ^:export init []
   (println "Initializing...")
-  (reset! state (init-state))
+  (go (reset! state (init-state (<! (res/resource-collection RMAP)))))
   (start)
   (io/init!))
 

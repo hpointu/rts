@@ -21,3 +21,4 @@ https://tedefump.gitlab.io/rts/
 - [ ] Actions prerequisites (resource based and more)
 - [ ] move UI stuff to its own namespace
 - [X] Refacto Protocols to Multimethods
+- [ ] Use re-frame for more efficient UI
