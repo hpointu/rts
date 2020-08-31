@@ -6,7 +6,7 @@
 
 (deftest visible
   (is (game/visible? {:camera [1 1]} [2 2]))
-  (is (not (game/visible? {:camera [3 1]} [2 2]))))
+  (is (not (game/visible? {:camera [4 1]} [2 2]))))
 
 (deftest test-obstacles
   (let [world [[:g :g :g :g]

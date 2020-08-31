@@ -69,16 +69,18 @@
     (.closePath)))
 
 (defmethod render-item! :hash-square render-hash-rect
-  [ctx {:keys [x y size color space]
-        :or {space 10}}]
+  [ctx {:keys [x y size color space border?]
+        :or {space 10 border? true}}]
   (.beginPath ctx)
-  (.rect ctx (+ 1 x) (+ 1 y) (- size 2) (- size 2))
-  (doseq [p (range space (* 2 size) space)]
-    (doto ctx
-      (.moveTo (+ -2 (min (+ x p) (+ size x)))
-               (+ 2 (max y (+ y (- p size)))))
-      (.lineTo (+ 2 (max x (+ x (- p size))))
-               (+ -2 (min (+ y size) (+ y p))))))
+  (when border?
+    (.rect ctx (+ 1 x) (+ 1 y) (- size 2) (- size 2)))
+  (let [off (if border? 2 0)]
+    (doseq [p (range space (* 2 size) space)]
+      (doto ctx
+        (.moveTo (- (min (+ x p) (+ size x)) off)
+                 (+ off (max y (+ y (- p size)))))
+        (.lineTo (+ off (max x (+ x (- p size))))
+                 (- (min (+ y size) (+ y p)) off)))))
   (aset ctx "strokeStyle" color)
   (.stroke ctx)
   (.closePath ctx))

@@ -1,27 +1,40 @@
 (ns hpointu.rts.game
   (:require [clojure.string :as string]
+            [hpointu.rts.colour :as colour]
             [hpointu.rts.core :as core]
             [hpointu.rts.constants :refer [CELL_SIZE]]
             [hpointu.rts.path :refer [path]]
-            [hpointu.rts.utils :refer [distance collides? in-rect?]]
+            [hpointu.rts.utils :as u
+             :refer [distance collides? in-rect?]]
             [hpointu.rts.ux :as ux])
   (:require-macros [hpointu.rts.macros
                     :refer [update-selected-entities]]))
 
 (def VIEW_W 18)
 (def VIEW_H 14)
+(def TILES
+  {colour/BLACK      :floor
+   colour/WHITE      :rock
+   colour/YELLOW     :crystal})
 
 (defmulti as-target (fn [entity state] (:type entity)))
 (defmethod as-target :default [_ state] state)
 
+(defn img->world [img]
+  (let 
+    [tile #(get TILES % :grass)
+     pixels (u/jsimage->pixels img)
+     row (fn [i] (mapv tile (get pixels i)))]
+    (mapv row (range (.-height img)))))
+
 (defn visible? [{:keys [camera]} [x y]]
   (let [[cx cy] camera]
-    (and (< cx x (+ cx VIEW_W))
-         (< cy y (+ cy VIEW_H)))))
+    (and (<= (dec cx) x (inc (+ cx VIEW_W)))
+         (<= (dec cy) y (inc (+ cy VIEW_H))))))
 
 (defn visible-range [[cx cy :as camera]]
-  (for [x (range (int cx) (int (+ cx VIEW_W)))
-        y (range (int cy) (int (+ cy VIEW_H)))]
+  (for [x (range (int cx) (int (+ 1 cx VIEW_W)))
+        y (range (int cy) (int (+ 1 cy VIEW_H)))]
     [x y]))
 
 (defn hover? [{:keys [hover]} x y]
@@ -36,7 +49,7 @@
 
   ([{:keys [entities] :as state} pos ignore-pred]
    (some
-     (fn [u] (= ((comp vec #(map js/Math.round %) :pos) u) pos))
+     (fn [u] (= ((comp #(mapv js/Math.round %) :pos) u) pos))
      (remove ignore-pred (vals entities)))))
 
 (defn free-tiles?
@@ -106,7 +119,7 @@
   (let [max-x (- (core/world-width world) 17.4)
         max-y (- (core/world-height world) 13.6)
         round (fn [f] (/ (js/Math.round (* 10 f)) 10))
-        fixed (fn [camera] (into [] (map round camera)))]
+        fixed (fn [camera] (mapv round camera))]
     (-> state
       (update-in [:camera 0] min max-x)
       (update-in [:camera 0] max 0)
@@ -240,7 +253,7 @@
     (if can?
       (-> state
           (update :entities assoc (:uid building) building)
-          (update :world #(core/set-world-cells % tiles :w))
+          (update :world #(core/set-world-cells % tiles :building))
           (update-in [:entities uid :goals] (comp vec rest))
           (update-in [:entities uid :goals] #(vec (cons [:build buid] %)))
           (redraw tiles))

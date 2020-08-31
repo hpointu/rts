@@ -1,10 +1,16 @@
 (ns hpointu.rts.drawing
   (:require [hpointu.rts.core :as core]
+            [hpointu.rts.colour :as col :refer [->colour]]
             [hpointu.rts.game :as game]
             [hpointu.rts.ux :as ux]
             [hpointu.rts.graphics :as g]))
 
 (def SIZE 35)
+
+(def TILE_COLS
+  {:floor  "#111"
+   :rock  "#777"
+   :crystal "#cc6600"})
 
 (defn to-game-canvas [{:keys [camera]} [x y]]
   (let [[cx cy] camera]
@@ -96,20 +102,92 @@
              :size 20
              :x xl :y yl}))))))
 
-(defn draw-tile! [ctx {:keys [mouse-mode world] :as state} x y size]
-  (let [tile-color (if (core/obstacle? world x y) "gray" "#222")
+(defn get-col [world x y]
+  (get TILE_COLS (core/world-cell world x y) "#00000"))
+
+(defmulti draw-tile!
+  (fn [ctx state x y] (core/world-cell (:world state) x y)))
+
+(defn get-nesw [world x y t]
+  (let [hmm? (fn [[px py]]
+               (if (core/in-world? world px py)
+                 (= t (core/world-cell world px py))
+                 true))]
+    (mapv hmm? [[x (dec y)] [(inc x) y]
+                [x (inc y)] [(dec x) y]])))
+
+(defmethod draw-tile! :default
+  [ctx {:keys [world] :as state} x y]
+  (let [tile-color (get-col world x y)
         [x y] (to-game-canvas state [x y])]
-    (g/render-item! ctx {:type :rect :x (+ 1 x) :y (+ 1 y)
-                         :w (- size 2) :h (- size 2) :fill tile-color})
-    (g/render-item! ctx {:type :rect :x (+ 2 x) :y (+ 2 y)
-                         :w (- size 4) :h (- size 4) :fill "black"})))
+    (g/render-item! ctx {:type :rect
+                         :x (inc x) :y (inc y)
+                         :fill tile-color
+                         :h (- SIZE 2) :w (- SIZE 2)})
+    (g/render-item! ctx {:type :rect
+                         :x (+ 2 x) :y (+ 2 y)
+                         :fill "black"
+                         :h (- SIZE 4) :w (- SIZE 4)})))
+
+(defmethod draw-tile! :crystal
+  [ctx {:keys [world] :as state} x y]
+  (let [tile-color (get-col world x y)
+        [x y] (to-game-canvas state [x y])
+        hs (/ SIZE 2)]
+        
+    (g/render-item! ctx {:type :rect
+                         :x (inc x) :y (inc y)
+                         :fill tile-color
+                         :h (- SIZE 2) :w (- SIZE 2)})
+    (g/render-item! ctx {:type :rect
+                         :x (+ 2 x) :y (+ 2 y)
+                         :fill "black"
+                         :h (- SIZE 4) :w (- SIZE 4)})
+    (g/render-item! ctx {:type :text
+                         :size 20
+                         :x (+ hs x) :y (+ hs y)
+                         :value "%"
+                         :color tile-color})))
+
+(defmethod draw-tile! :rock
+  [ctx {:keys [world] :as state} x y]
+  (let [tile-color (get-col world x y)
+        v (core/world-cell world x y)
+        b 2
+        [n e s w] (get-nesw world x y v)
+        [x y] (to-game-canvas state [x y])
+        rx (if w x (+ b x))
+        ry (if n y (+ b y))
+        rw (if e SIZE (- SIZE b)) 
+        rh (if s SIZE (- SIZE b))
+        rw (if w rw (- rw b))
+        rh (if n rh (- rh b))]
+    (g/render-item! ctx
+                    {:type :rect
+                     :fill tile-color
+                     :x x :y y
+                     :w SIZE
+                     :h SIZE})
+    (g/render-item! ctx
+                    {:type :rect
+                     :fill "black"
+                     :x rx :y ry
+                     :w rw
+                     :h rh})
+    (g/render-item! ctx
+                    {:type :hash-square
+                     :border? false
+                     :x x :y y
+                     :space 7
+                     :size SIZE
+                     :color tile-color})))
 
 (defn draw-game-elem!
   [state [update-type & args] {:keys [context canvas]}]
   (cond (= update-type :cell)
         (let [[x y] args]
           (when (game/visible? state [x y])
-            (draw-tile! context state x y SIZE)))
+            (draw-tile! context state x y)))
         (= update-type :clear)
         (.clearRect context 0 0 (.-width canvas) (.-height canvas))))
     
@@ -117,7 +195,7 @@
   (cond (= update-type :cell)
         (let [size 3
               [x y] args
-              color (if (core/obstacle? world x y) "gray" "#111")
+              color (get-col world x y)
               [x y] (to-minimap-canvas args size)]
           (g/render-item! ctx {:type :rect :x x :y y
                                :w size :h size :fill color}))))

@@ -3,17 +3,20 @@
             [hpointu.rts.drawing :as drawing]
             [hpointu.rts.input :as io]
             [hpointu.rts.game :as game]
-            [hpointu.rts.utils :refer [collides?]]
+            [hpointu.rts.utils :as u :refer [collides?]]
             [hpointu.rts.resources :as res]
             [hpointu.rts.ux :as ux]
             [goog.string :as gstring]
             [reagent.core :as r]
             [reagent.dom :as rdom]
-            [cljs.core.async :refer [<!] :refer-macros [go]]
+            [cljs.core.async :as a
+             :refer [<!]
+             :refer-macros [go]]
             [cljs.pprint]))
 
 (def RMAP
-  {:world "img/maps/level_00.png"})
+  {:world "img/maps/level_00.png"
+   :test "img/maps/test.png"})
    
 
 (defonce debug? (r/atom false))
@@ -38,8 +41,7 @@
           :pos [x y]})))
 
 (defn init-entities []
-  [(->unit :peon 2 2)
-   (->unit :knight 3 4)
+  [(->unit :knight 3 4)
    (->unit :peon 4 4)
    (->unit :peon 5 3)
    (->unit :knight 5 4 45)
@@ -59,7 +61,8 @@
   
 
 (defn init-state [resources]
-  {:world (core/->world 74 74)
+  {:world (game/img->world (:world resources))
+   ;:world (core/->world 74 74)
    :camera [0 0]
    :buildings []
    :entities (into {} (map (juxt :uid identity) (init-entities)))
@@ -387,7 +390,9 @@
 
 (defn ^:export init []
   (println "Initializing...")
-  (go (reset! state (init-state (<! (res/resource-collection RMAP)))))
-  (start)
-  (io/init!))
+  (go
+    (let [resources (<! (res/resource-collection RMAP))]
+      (reset! state (init-state resources))
+      (start)
+      (io/init!))))
 

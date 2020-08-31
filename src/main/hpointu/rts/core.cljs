@@ -32,10 +32,8 @@
         (into (for [_ (range (- height 2))] line))
         (conj full)))) 
 
-
 (defn world-cell [world x y]
   (get-in world [y x]))
-
 
 (defn set-world-cells [world positions v]
   (loop [w world
@@ -67,7 +65,7 @@
 
 (defn obstacle?
   ([world x y]
-   (let [obstacles #{:w}]
+   (let [obstacles #{:w :rock :building}]
      (some? (obstacles (get-in world [y x])))))
   ([world [x y]]
    (obstacle? world x y)))
@@ -90,7 +88,6 @@
 
 (defn on-cell? [cell [x y]]
   (every? true? (map = cell [(int x) (int y)])))
-
 
 (defn neighbours [world [x y]]
   (filter
