@@ -1,9 +1,7 @@
 (ns hpointu.rts.macros)
 
-(defmacro update-selected-entities [state func & args]
+(defmacro update-entities [state filter-fn func & args]
   `(reduce
      #(hpointu.rts.game/update-entity %1 %2 ~func ~@args)
      ~state
-     (map :uid (hpointu.rts.game/get-selected-entities ~state))))
-
-           
+     (map :uid (filter ~filter-fn (vals (:entities ~state))))))

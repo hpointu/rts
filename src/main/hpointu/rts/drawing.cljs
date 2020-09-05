@@ -1,6 +1,7 @@
 (ns hpointu.rts.drawing
   (:require [hpointu.rts.core :as core]
             [hpointu.rts.colour :as col :refer [->colour]]
+            [hpointu.rts.entities :as ntt]
             [hpointu.rts.game :as game]
             [hpointu.rts.ux :as ux]
             [hpointu.rts.graphics :as g]))
@@ -10,7 +11,7 @@
 (def TILE_COLS
   {:floor  "#111"
    :rock  "#777"
-   :crystal "#cc6600"})
+   :crystal "#00ffc5"})
 
 (defn to-game-canvas [{:keys [camera]} [x y]]
   (let [[cx cy] camera]
@@ -28,10 +29,10 @@
     (into [] (map #(+ 5 %) [x y 20 20])))) 
 
 
-(defmethod core/render-items :unit [u]
+(defmethod core/render-items ::ntt/unit [u]
   [(:render-item u)])
 
-(defmethod core/render-items :building
+(defmethod core/render-items ::ntt/building
   [{:keys [name size label-size active build-progress build-time]}]
   (let [size (* SIZE size)
         completion (/ build-progress build-time)
@@ -142,12 +143,7 @@
     (g/render-item! ctx {:type :rect
                          :x (+ 2 x) :y (+ 2 y)
                          :fill "black"
-                         :h (- SIZE 4) :w (- SIZE 4)})
-    (g/render-item! ctx {:type :text
-                         :size 20
-                         :x (+ hs x) :y (+ hs y)
-                         :value "%"
-                         :color tile-color})))
+                         :h (- SIZE 4) :w (- SIZE 4)})))
 
 (defmethod draw-tile! :rock
   [ctx {:keys [world] :as state} x y]

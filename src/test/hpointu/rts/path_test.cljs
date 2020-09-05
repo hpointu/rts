@@ -1,6 +1,7 @@
 (ns hpointu.rts.path-test
   (:require [cljs.test :refer [deftest is]]
             [hpointu.rts.core :as core]
+            [hpointu.rts.utils :as u]
             [hpointu.rts.path :as p]))
 
 (deftest test-manhattan-distance
@@ -8,7 +9,10 @@
 
 
 (defn get-cost-fn [world]
-  (fn [f t] (core/cost world f t)))
+  (fn [f t]
+   (if (= :w (apply core/world-cell world t))
+     ##Inf
+     (u/distance f t))))
 
 (defn get-neigh-fn [world]
   (fn [p] (core/neighbours world p)))

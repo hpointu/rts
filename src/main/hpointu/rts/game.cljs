@@ -1,66 +1,77 @@
 (ns hpointu.rts.game
-  (:require [clojure.string :as string]
-            [hpointu.rts.colour :as colour]
-            [hpointu.rts.core :as core]
-            [hpointu.rts.constants :refer [CELL_SIZE]]
-            [hpointu.rts.path :refer [path]]
-            [hpointu.rts.utils :as u
-             :refer [distance collides? in-rect?]]
-            [hpointu.rts.ux :as ux])
-  (:require-macros [hpointu.rts.macros
-                    :refer [update-selected-entities]]))
-
-(def VIEW_W 18)
-(def VIEW_H 14)
-(def TILES
-  {colour/BLACK      :floor
-   colour/WHITE      :rock
-   colour/YELLOW     :crystal})
+  (:require
+    [hpointu.rts.core :as core]
+    [hpointu.rts.constants :as C]
+    [hpointu.rts.entities :as ntt]
+    [hpointu.rts.path :refer [path]]
+    [hpointu.rts.utils :as u]
+    [hpointu.rts.ux :as ux])
+  (:require-macros
+    [hpointu.rts.macros
+     :refer [update-entities]]))
 
 (defmulti as-target (fn [entity state] (:type entity)))
 (defmethod as-target :default [_ state] state)
 
 (defn img->world [img]
   (let 
-    [tile #(get TILES % :grass)
+    [tile #(C/TILES % :grass)
      pixels (u/jsimage->pixels img)
      row (fn [i] (mapv tile (get pixels i)))]
     (mapv row (range (.-height img)))))
 
+(defn spawn-entity [[pos cell-type]]
+  (when-let [entity-factory (ntt/cell-spawn cell-type)]
+    (-> (entity-factory)
+        (core/assign-uid)
+        (assoc :pos pos))))
+
+(defn add-unit [state pos entity-type]
+  (let [entity (-> (core/->unit entity-type)
+                   (core/assign-uid)
+                   (assoc :pos pos))
+        uid (:uid entity)]
+    (update state :entities into [[uid entity]])))
+
+(defn world->entities [world]
+  (remove nil? (map spawn-entity (core/world-seq world))))
+
+(defn populate-entities [{:keys [world] :as state}]
+  (let [entities (world->entities world)]
+    (update state :entities into (map (juxt :uid identity) entities))))
+
 (defn visible? [{:keys [camera]} [x y]]
   (let [[cx cy] camera]
-    (and (<= (dec cx) x (inc (+ cx VIEW_W)))
-         (<= (dec cy) y (inc (+ cy VIEW_H))))))
+    (and (<= (dec cx) x (inc (+ cx C/VIEW_W)))
+         (<= (dec cy) y (inc (+ cy C/VIEW_H))))))
 
 (defn visible-range [[cx cy :as camera]]
-  (for [x (range (int cx) (int (+ 1 cx VIEW_W)))
-        y (range (int cy) (int (+ 1 cy VIEW_H)))]
+  (for [x (range (int cx) (int (+ 1 cx C/VIEW_W)))
+        y (range (int cy) (int (+ 1 cy C/VIEW_H)))]
     [x y]))
 
-(defn hover? [{:keys [hover]} x y]
-  (= hover [x y]))
-
-(defn cell-redraw [[x y]]
-  [:cell x y])
-
-(defn busy-cell?
-  ([state pos]
-   (busy-cell? state pos (fn [_] false)))
-
-  ([{:keys [entities] :as state} pos ignore-pred]
-   (some
-     (fn [u] (= ((comp #(mapv js/Math.round %) :pos) u) pos))
-     (remove ignore-pred (vals entities)))))
+(defn cell-redraw [[x y]] [:cell x y])
 
 (defn free-tiles?
   ([state tiles free-tiles]
-   (let [ignore (fn [cell] (some #(= % cell) free-tiles))]
+   (let [ignore (fn [cell] (some #(= % cell) free-tiles))
+         entities (:entities state)]
      (not-any? #(and (not (ignore %1))
-                     (or (core/obstacle? (:world state) %1)
-                         (busy-cell? state %1)))
+                     (core/obstacle? (vals entities) (:world state) %1))
                tiles)))
   ([state tiles]
    (free-tiles? state tiles [])))
+
+(defn get-blocking-entities [state]
+  (filter :obstacle? (vals (:entities state))))
+
+(defn get-cost-fn [{:keys [world] :as state}]
+  (let [entities (get-blocking-entities state)]
+    (fn [from to]
+      (let [close-enough? #(< (u/distance (:pos %) to) 3)]
+        (if (core/obstacle? (filter close-enough? entities) world to)
+          ##Inf
+          (u/distance from to))))))
 
 (defn reserved-walk-targets [{:keys [entities]}]
   (apply
@@ -142,43 +153,31 @@
    (filter :selected? (sort-by sort-key (vals entities)))))
 
 (defn system-entities [system {:keys [entities]}]
-  (let [components (core/system-components system)
-        filter-fn (core/filter-by-components components)]
+  (let [filter-fn (core/filter-by-system system)]
     (filter filter-fn (vals entities))))
 
 (defn entity-can-build [entity btype]
   (some #(= (ux/build btype) %) (:available-actions entity)))
 
+(defn get-entity [state uid]
+  (get-in state [:entities uid]))
+
 (defn update-entity [state uid func & args]
   (update-in state [:entities uid] #(apply func % args)))
 
 (defn clear-selection [state]
-  (update-selected-entities state assoc :selected? false))
+  (update-entities state :selected? assoc :selected? false))
 
 (defn select-entities
   ([state select-entity-pred]
    (select-entities state select-entity-pred false))
 
   ([state select-entity-pred append?]
-   (letfn
-     [(-select [{:keys [entities] :as state} uids]
-        (loop [cpt (if append? (count (get-selected-entities state)) 0)
-               current state
-               left uids]
-          (if (empty? left) current
-            (let [uid (first left)
-                  select? (select-entity-pred (get entities uid))
-                  selected (get-in entities [uid :selected?])
-                  not-sel (if append? selected false)
-                  sel (if selected (if append? selected cpt) cpt)
-                  sel (if select? sel not-sel)
-                  next-cpt (if (and sel (not selected)) (inc cpt) cpt)
-                  next-state (update-entity current uid
-                                            assoc :selected? sel)]
-              (recur next-cpt next-state (rest left))))))]
-
-     (let [s (if append? state (clear-selection state))]
-       (-select s (map :uid (system-entities :select state)))))))
+   (cond-> state
+     (not append?)
+     clear-selection
+     true
+     (update-entities select-entity-pred assoc :selected? true))))
 
 (defn extend-selection [{:keys [mods] :as state} subtype]
   (select-entities
@@ -193,30 +192,39 @@
       extend?
       (extend-selection (core/entity-subtype e)))))
 
-(defn nearest-tile-path [world start tiles]
+(defn nearest-tile-path [{:keys [world] :as state} start tiles]
   (let [neighbour-fn #(core/neighbours world %1)
-        cost-fn #(core/cost world % %)
-        paths (map #(path start % cost-fn neighbour-fn) tiles)]
+        cost-fn (get-cost-fn state)
+        paths (map #(path start %1 cost-fn neighbour-fn) tiles)]
     (first (sort-by count paths))))
 
 (defn pick-entities [state pos]
   (filter
-    #(in-rect? (core/entity-aabb %) pos)
+    #(u/in-rect? (core/entity-aabb %) pos)
     (system-entities :select state)))
+
 
 (defn move-selected-entities
   [{:keys [world entities mods] :as state} target]
 
-  (defn set-entity-destination [{:keys [selected?] :as entity} targets]
+  (defn set-entity-destination [{:keys [uid] :as entity} targets]
     (if (contains? mods :append)
-      (core/add-goal entity [:walk (nth targets selected?)])
-      (core/set-goal entity [:walk (nth targets selected?)])))
+      (core/add-goal entity [:walk (targets uid)])
+      (core/set-goal entity [:walk (targets uid)])))
 
-  (let [size (count (get-selected-entities state)) 
-        origins (map :pos (get-selected-entities state))
-        targets (find-walk-targets state target size origins)]
+  (let [movable? (every-pred :selected? (core/filter-by-system :move))
+        to-move (filter movable? (vals entities))
+        origins (map :pos to-move)
+        targets (find-walk-targets state target (count to-move) origins)
+        targets (into {} (map vector (map :uid to-move) targets))]
     (-> state
-      (update-selected-entities set-entity-destination targets))))
+        (update-entities movable? set-entity-destination targets))))
+
+(defn update-current-goal [state actor-uid f & args]
+  (update-in state [:entities actor-uid :goals 0] #(apply f % args)))
+
+(defn next-goal [state actor-uid]
+  (update-in state [:entities actor-uid :goals] (comp vec rest)))
 
 (defn update-actor [state actor-uid dt]
   (if-let [current-goal (get-in state [:entities actor-uid :goals 0])]
@@ -228,6 +236,16 @@
             (update-actor prev-state (:uid actor) dt))]
     (reduce actor-reducer state (system-entities :actors state))))
 
+(defmethod core/act :spawn
+  [state uid [_ utype progress total] dt]
+  (if (< progress total)
+    (update-in state [:entities uid :goals 0 2] + dt)
+    (let [pos (:pos (get-entity state uid))
+          to (first (find-walk-targets state pos 1 []))]
+      (-> state
+          (add-unit to utype)
+          (next-goal uid)))))
+
 (defmethod core/act :build [state uid [_ buid] dt]
   (let [btime (get-in state [:entities buid :build-time])
         bprogress (get-in state [:entities buid :build-progress])]
@@ -236,19 +254,19 @@
       (-> state
           (assoc-in [:entities buid :build-progress] btime)
           (assoc-in [:entities buid :active] true)
-          (update-in [:entities uid :goals] (comp vec rest))))))
+          (next-goal uid)))))
 
 (defmethod core/act :wait [state uid [_ t] dt]
   (if (> t 0)
     (update-in state [:entities uid :goals 0 1] - dt)
-    (update-in state [:entities uid :goals] (comp vec rest))))
+    (next-goal state uid)))
 
 (defmethod core/act :place-building [state uid [_ btype pos] dt]
   (let [buid (core/get-uid)
         building (assoc (core/->building btype)
                         :uid buid
                         :pos pos)
-        tiles (core/building-tiles building)
+        tiles (core/entity-tiles building)
         can? (free-tiles? state tiles)]
     (if can?
       (-> state
@@ -263,14 +281,12 @@
   [{:keys [world entities] :as state} uid [_ target] dt]
 
   (defn arrived? [{:keys [pos] :as entity} dest]
-    (< (distance pos dest) 0.01))
-
-  (defn cost-fn [from to]
-    (core/cost world from to))
+    (< (u/distance pos dest) 0.01))
 
   (defn get-path [pos]
     (let [neighbours-fn #(core/neighbours world %1)]
-      (path (map int pos) target cost-fn neighbours-fn)))
+      (path
+        (map int pos) target (get-cost-fn state) neighbours-fn)))
 
   (defn calculate-new-path [{:keys [pos] :as entity}]
     (if-let [path (get-path pos)]
@@ -302,7 +318,7 @@
               (update :goals #(if (not more) (into [] (rest %1)) %1))))
         ; there's a wp further away :
         wp
-        (if (apply core/obstacle? world wp)
+        (if (core/obstacle? (get-blocking-entities state) world wp)
           (calculate-new-path entity)
           (-> entity
               (update :pos #(map + [dx dy] %))))
@@ -315,17 +331,17 @@
     (update-in state [:entities uid :goals] (comp vec rest))))
 
 
-(defn contribute-to-build [state buid unit-uid]
-  (update-in state [:entities unit-uid :goals] conj [:build buid]))
+(defn contribute-to-build [entity buid]
+  (update entity :goals conj [:build buid]))
 
 ;; TODO: should also dispatch on mouse-mode value
-(defmethod as-target :building [{:keys [active btype uid]} state]
-  (let [can-build #(entity-can-build % btype)
-        selected (get-selected-entities state)]
-    (reduce
-      #(contribute-to-build %1 uid (:uid %2))
-       state
-       (filter can-build selected))))
+(defmethod as-target ::ntt/building [{:keys [active btype uid]} state]
+  (let [can-build #(entity-can-build % btype)]
+    (update-entities
+      state
+      (every-pred can-build :selected?)
+      contribute-to-build
+      uid)))
 
 ;; nil mouse mode
 (defmethod ux/left-click-start nil [_ state pos]
@@ -344,7 +360,7 @@
     state))
 
 (defmethod ux/left-click-end nil [_ {:keys [mods] :as state} pos]
-  (let [hit? #(collides? (selector-rect state) (core/entity-aabb %))
+  (let [hit? #(u/collides? (selector-rect state) (core/entity-aabb %))
         [uid u] (first (filter (comp hit? second) (:entities state)))
         subtype (when u (core/entity-subtype u))]
     (cond-> state
@@ -361,124 +377,34 @@
 (defmethod ux/drag ::ux/build [_ {:keys [selector] :as state} pos] state)
 (defmethod ux/left-click-start ::ux/build [_ state pos] state)
 (defmethod ux/left-click-end ::ux/build
-  [[_ building] {:keys [world] :as state} pos]
+  [[_ building] state pos]
   (let [entity (first (get-selected-entities state))
         start ((comp #(map int %) :pos) entity)
         pos (map int pos)
         tmp (assoc (core/->building building) :pos pos)
-        tiles (core/building-tiles tmp)
-        path (nearest-tile-path world start tiles)]
+        tiles (core/entity-tiles tmp)
+        path (nearest-tile-path state start tiles)]
     (if (free-tiles? state tiles)
       (-> state
           (move-selected-entities (second (reverse path)))
-          (update-selected-entities
+          (update-entities :selected?
             update :goals conj [:place-building building pos])
           (dissoc :mouse-mode))
       state)))
-
-;; TODO: Figure out where this game content data section should live
-;; Units
-(defn ->square-shape [color size]
-  {:type :rect
-   :fill color
-   :w size
-   :h size
-   :x (/ (- CELL_SIZE size) 2)
-   :y (/ (- CELL_SIZE size) 2)})
-
-(defn ->circle-shape [color radius]
-  {:type :circle
-   :fill color
-   :r radius
-   :x (/ CELL_SIZE 2)
-   :y (/ CELL_SIZE 2)})
-
-(defn ->base-unit [utype unit]
-  (into
-    {:type :unit
-     :utype utype
-     :name (string/capitalize (name utype))
-     :aabb [0.1 0.1 0.8 0.8]
-     :goals []
-     :render-as :unit
-     :waypoints []}
-
-    unit))
-
-
-(defmethod core/->unit :peon [utype]
-  (->base-unit
-    utype
-    {:walk-speed 3
-     :pv 20
-     :pv-max 20
-     :available-actions [(ux/build :house)
-                         (ux/build :farm)]
-     :render-item (->circle-shape "#0cf" 12)}))
-
-(defmethod core/->unit :knight [utype]
-  (->base-unit
-    utype
-    {:walk-speed 5
-     :pv 200
-     :pv-max 200
-     :available-actions [(ux/build :hotel)]
-     :render-item (->square-shape "#0cf" 22)}))
-  
-;; Buildings
-(defn ->base-building [btype building]
-  (let [size (:size building)]
-    (into
-      {:type :building
-       :btype btype
-       :name (string/capitalize (name btype))
-       :build-progress 0
-       :aabb [0 0 size size]
-       :render-as :building
-       :goals []}
-
-      building)))
-
-(defmethod core/->building :farm [btype]
-  (->base-building
-    btype
-    {:pv-max 50
-     :pv 50
-     :build-time 10000
-     :label "Farm"
-     :label-size 14
-     :size 2}))
-
-(defmethod core/->building :house [btype]
-  (->base-building
-    btype
-    {:pv-max 50
-     :pv 50
-     :build-time 7500
-     :label "House"
-     :label-size 10
-     :size 1}))
-
-(defmethod core/->building :hotel [btype]
-  (->base-building
-    btype
-    {:pv-max 80
-     :pv 80
-     :build-time 15000
-     :label "Hotel"
-     :label-size 14
-     :size 3}))
 
 (defmethod core/system-components :actors [_] [:goals])
 (defmethod core/system-components :select [_] [:aabb :pos])
 (defmethod core/system-components :draw [_] [:pos :render-as :aabb])
 (defmethod core/system-components :draw-minimap [_] [:pos :preview])
+(defmethod core/system-components :move [_] [:pos :walk-speed])
 
-(defmethod core/entity-subtype :unit [e] (:utype e))
-(defmethod core/entity-subtype :building [e] (:btype e))
-
-(defmethod ux/ui-action-name ::ux/build [[_ building]]
-  (name building))
+(defmethod core/entity-subtype ::ntt/unit [e] (:utype e))
+(defmethod core/entity-subtype ::ntt/building [e] (:btype e))
+(defmethod core/entity-subtype ::ntt/object [e] (:otype e))
 
 (defmethod ux/ui-action-select ::ux/build [action state]
   (assoc state :mouse-mode action))
+
+(defmethod ux/ui-action-select ::ux/spawn [action state]
+  (let [action [:spawn ::ntt/peon 0 1000]]
+    (update-entities state :selected? update :goals conj action)))

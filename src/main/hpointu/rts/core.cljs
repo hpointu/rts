@@ -3,10 +3,13 @@
       
 (defmulti ->unit (fn [u] u))
 (defmulti ->building (fn [b] b))
+(defmulti ->object (fn [o] o))
 (defmulti act (fn [state actor-uid action dt] (first action)))
 (defmulti system-components (fn [s] s))
 (defmulti entity-subtype :type)
 (defmulti render-items :render-as)
+
+(defmethod act :default [s _ a _] (println a "default action") s)
 
 ;; TODO Probably move to game.cljc
 (def uids (atom 0))
@@ -14,8 +17,14 @@
   (swap! uids inc)
   @uids)
 
+(defn assign-uid [entity]
+  (assoc entity :uid (get-uid)))
+
 (defn filter-by-components [components]
   (fn [record] ((apply every-pred components) record)))
+
+(defn filter-by-system [system]
+  (filter-by-components (system-components system)))
 
 (defn world-width [world]
   (count (get world 0)))
@@ -34,6 +43,12 @@
 
 (defn world-cell [world x y]
   (get-in world [y x]))
+
+(defn world-seq [world]
+  (let [w (world-width world)
+        h (world-height world)]
+    (for [x (range w), y (range h)]
+      [[x y] (world-cell world x y)])))
 
 (defn set-world-cells [world positions v]
   (loop [w world
@@ -63,21 +78,6 @@
 (defn goals-by-type [goal-type entity]
   (filter #(= goal-type (first %)) (:goals entity)))
 
-(defn obstacle?
-  ([world x y]
-   (let [obstacles #{:w :rock :building}]
-     (some? (obstacles (get-in world [y x])))))
-  ([world [x y]]
-   (obstacle? world x y)))
-
-
-(defn cost [world from to]
-  (let [[x1 y1] to]
-    (if (obstacle? world x1 y1)
-      ##Inf
-      (distance from to))))
-
-
 (defn in-world?
   ([world [x y]]
    (in-world? world x y))
@@ -103,8 +103,20 @@
         add-offset (fn [[ox oy]] [(+ ox x) (+ oy y)])]
     (vec (map add-offset offsets))))
 
-(defn building-tiles [{:keys [size pos]}]
-  (tiles pos size size))
+(defn entity-tiles [{:keys [size pos] :or {size 1}}]
+  (tiles (mapv js/Math.round pos) size size))
+
+(defn occupies? [entity tile]
+  (some #(= tile %) (entity-tiles entity)))
+
+(defn busy-cell? [entities pos]
+  (some #(occupies? % pos) entities))
+
+(defn obstacle?
+  [entities world [x y :as pos]]
+  (let [obstacles #{:w :rock :building}]
+    (or (some? (obstacles (get-in world [y x])))
+        (busy-cell? entities pos))))
 
 (defn built? [{:keys [build-time build-progress]}]
   (= build-progress build-time))

@@ -17,11 +17,12 @@
 (def RMAP
   {:world "img/maps/level_00.png"
    :test "img/maps/test.png"})
-   
 
 (defonce debug? (r/atom false))
 (def current-time (atom (.now js/Date)))
 (defonce state (r/atom {}))
+
+(assoc-in (:entities (deref state)) [53 :selected?] true) 
 
 ;; hack for FPS counter
 (defonce frame-counter (atom 0))
@@ -61,12 +62,14 @@
   
 
 (defn init-state [resources]
-  {:world (game/img->world (:world resources))
-   ;:world (core/->world 74 74)
-   :camera [0 0]
-   :buildings []
-   :entities (into {} (map (juxt :uid identity) (init-entities)))
-   :world-updates []})
+  (-> {:world (game/img->world (:world resources))
+       ;:world (core/->world 74 74)
+       :player {:crystal 500}
+       :camera [0 0]
+       :buildings []
+       :entities {}
+       :world-updates []}
+    (game/populate-entities)))
 
 (defn to-world
   ([pos]
@@ -264,7 +267,6 @@
   [:div {:style {:margin-top 5 :background-color "#111"
                  :max-width 222
                  :border "1px solid #888"
-                 :font-family "\"Courier New\", Courier, monospace"
                  :flex-grow 1}}
     (if (and u (not more))
       [:div 
@@ -272,7 +274,7 @@
         (str (:name u) " - " (:uid u))]
        [health-bar (:pv u) (:pv-max u)]
        [:pre {:style {:padding "0 5px"}}
-        (str (:waypoints u) "\n")
+        (str (:pos u) "\n")
         (for [g (:goals u)] (str g "\n"))]]
       
       [:div {:style {:display "flex"
@@ -309,17 +311,28 @@
             :style {:padding 10 :margin 0 :width 111}}
            (ux/ui-action-name a)])))])
 
+(defn inventory-bar [player-stats]
+  [:div {:style {:display :flex}}
+   [:div {:style {:flex-grow 1}}
+    [:h3 {:style {:padding 10 :margin 0}} "Player informations"]]
+   [:div {:style {:width 80
+                  :color  "#00ffc5"}}
+    [:span {:style {}}
+     [:span {:style {:vertical-align "middle"
+                     :height 0
+                     :font-size 30}}
+      "✴" [:span {:style {:font-size 16
+                          :margin-left 5
+                          :vertical-align "middle"}} (:crystal player-stats)]]]]])
+   
 (defn rts-app [props]
-  [:div {:style {:color "white"}}
-   [:h2 {:style {:margin "0 0 5px 0"
-                 :padding 10
-                 :width 820
-                 :background-color "black"}}
-    "RTS Demo" [:span {:style {:font-size "0.7em"
-                               :font-family "\"Courier New\", Courier, monospace"
-                               :color "red"
-                               :margin-left 90}}
-                "- Press W on the map to place a wall"]]
+  [:div {:style {:color "white"
+                 :font-family "\"Courier New\", Courier, monospace"}}
+   [:div {:style {:margin "0 0 5px 0"
+                  :width 840
+                  :background-color "black"}}
+    [inventory-bar (:player @state)]]
+
    [:div {:style {:display "flex"}}
      [:div {:style {:width 223
                     :margin-right 5
