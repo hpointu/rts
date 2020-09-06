@@ -15,3 +15,5 @@
    colour/MAGENTA    :p4
    colour/WHITE      :rock
    colour/YELLOW     :crystal})
+
+(def obstacles #{:w :rock :building})

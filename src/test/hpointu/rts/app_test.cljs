@@ -11,8 +11,8 @@
 (deftest test-obstacles
   (let [world [[:g :g :g :g]
                [:g :g :g :w]]]  ; wall (3, 1)
-    (is (core/obstacle? [] world [3 1]))
-    (is (not (core/obstacle? [] world [1 1])))))
+    (is (core/obstacle? world [3 1]))
+    (is (not (core/obstacle? world [1 1])))))
 
 (deftest test-world-dimensions
   (let [world [[:w :w :w]
@@ -58,7 +58,7 @@
                [:g :g :w :g :g]
                [:g :w :g :g :g]
                [:w :w :g :w :w]]
-        free? (fn [t] (not (core/obstacle? [] world t)))]
+        free? (fn [t] (not (core/obstacle? world t)))]
     (is (= [[1 1]]
            (core/get-free-zone world [1 1] 1 free?)))
     (is (= #{[1 1] [0 0] [0 1] [0 2] [1 2] [2 1] [3 1]}

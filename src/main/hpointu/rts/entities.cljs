@@ -36,7 +36,7 @@
      :utype otype
      :name (string/capitalize (name otype))
      :aabb [0.1 0.1 0.8 0.8]
-     :obstacle? true
+     :obstruction :w
      :render-as ::unit}
     obj))
 
@@ -87,7 +87,7 @@
        :build-progress 0
        :aabb [0 0 size size]
        :render-as ::building
-       :obstacle? true
+       :obstruction :w
        :goals []}
 
       building)))

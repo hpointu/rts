@@ -11,6 +11,7 @@ https://tedefump.gitlab.io/rts/
 - [X] prevent entities on the same cell
 - [X] Resources as Entities
 - [X] Building available actions (spawn a peon for example)
+- [X] Prevent units from blocking on half-cells
 - [ ] Optimize path assignment
 - [ ] In-game resource collection
 - [ ] Actions prerequisites (resource based and more)

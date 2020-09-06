@@ -6,6 +6,7 @@
     [hpointu.rts.path :refer [path]]
     [hpointu.rts.utils :as u]
     [hpointu.rts.ux :as ux])
+    ;[taoensso.tufte :as tufte :refer-macros (defnp p profiled profile)])
   (:require-macros
     [hpointu.rts.macros
      :refer [update-entities]]))
@@ -26,19 +27,25 @@
         (core/assign-uid)
         (assoc :pos pos))))
 
-(defn add-unit [state pos entity-type]
-  (let [entity (-> (core/->unit entity-type)
+(defn add-entity [state pos entity-factory]
+  (let [entity (-> (entity-factory)
                    (core/assign-uid)
                    (assoc :pos pos))
         uid (:uid entity)]
-    (update state :entities into [[uid entity]])))
+    (->
+      state
+      (update :entities into [[uid entity]])
+      (update :world core/add-entity entity))))
 
 (defn world->entities [world]
   (remove nil? (map spawn-entity (core/world-seq world))))
 
 (defn populate-entities [{:keys [world] :as state}]
   (let [entities (world->entities world)]
-    (update state :entities into (map (juxt :uid identity) entities))))
+    (->
+      state
+      (update :entities into (map (juxt :uid identity) entities))
+      (update :world core/add-entities entities))))
 
 (defn visible? [{:keys [camera]} [x y]]
   (let [[cx cy] camera]
@@ -55,23 +62,23 @@
 (defn free-tiles?
   ([state tiles free-tiles]
    (let [ignore (fn [cell] (some #(= % cell) free-tiles))
-         entities (:entities state)]
+         entities (vals (:entities state))]
      (not-any? #(and (not (ignore %1))
-                     (core/obstacle? (vals entities) (:world state) %1))
+                     (or (core/obstacle? (:world state) %1)
+                         (core/busy-cell? entities %1)))
                tiles)))
   ([state tiles]
    (free-tiles? state tiles [])))
 
-(defn get-blocking-entities [state]
-  (filter :obstacle? (vals (:entities state))))
-
-(defn get-cost-fn [{:keys [world] :as state}]
-  (let [entities (get-blocking-entities state)]
+(defn get-cost-fn [state]
+  (let [obstacle? #(core/obstacle? (:world state) %)]
     (fn [from to]
-      (let [close-enough? #(< (u/distance (:pos %) to) 3)]
-        (if (core/obstacle? (filter close-enough? entities) world to)
-          ##Inf
-          (u/distance from to))))))
+      (if (obstacle? to)
+        ##Inf
+        (u/distance from to)))))
+
+(defn get-neigh-fn [state]
+  (fn [pos] (core/neighbours (:world state) pos)))
 
 (defn reserved-walk-targets [{:keys [entities]}]
   (apply
@@ -192,17 +199,19 @@
       extend?
       (extend-selection (core/entity-subtype e)))))
 
-(defn nearest-tile-path [{:keys [world] :as state} start tiles]
-  (let [neighbour-fn #(core/neighbours world %1)
-        cost-fn (get-cost-fn state)
-        paths (map #(path start %1 cost-fn neighbour-fn) tiles)]
-    (first (sort-by count paths))))
-
 (defn pick-entities [state pos]
   (filter
     #(u/in-rect? (core/entity-aabb %) pos)
     (system-entities :select state)))
 
+(defn get-path [state from to]
+  (let [cost-fn (get-cost-fn state)
+        neigh-fn (get-neigh-fn state)]
+    (path from to cost-fn neigh-fn)))
+
+(defn nearest-tile-path [{:keys [world] :as state} start tiles]
+  (let [paths (map #(get-path state start %1) tiles)]
+    (first (sort-by count paths))))
 
 (defn move-selected-entities
   [{:keys [world entities mods] :as state} target]
@@ -243,7 +252,7 @@
     (let [pos (:pos (get-entity state uid))
           to (first (find-walk-targets state pos 1 []))]
       (-> state
-          (add-unit to utype)
+          (add-entity to #(core/->unit utype))
           (next-goal uid)))))
 
 (defmethod core/act :build [state uid [_ buid] dt]
@@ -283,15 +292,10 @@
   (defn arrived? [{:keys [pos] :as entity} dest]
     (< (u/distance pos dest) 0.01))
 
-  (defn get-path [pos]
-    (let [neighbours-fn #(core/neighbours world %1)]
-      (path
-        (map int pos) target (get-cost-fn state) neighbours-fn)))
-
   (defn calculate-new-path [{:keys [pos] :as entity}]
-    (if-let [path (get-path pos)]
+    (if-let [path (get-path state (map js/Math.round pos) target)]
       (assoc entity :waypoints path)
-      (let [targets (find-walk-targets state target 1 [pos])
+      (let [targets (find-walk-targets state target 1 [(map js/Math.round pos)])
             goal [:walk (first targets)]]
         (core/replace-current-goal entity goal))))
 
@@ -318,10 +322,7 @@
               (update :goals #(if (not more) (into [] (rest %1)) %1))))
         ; there's a wp further away :
         wp
-        (if (core/obstacle? (get-blocking-entities state) world wp)
-          (calculate-new-path entity)
-          (-> entity
-              (update :pos #(map + [dx dy] %))))
+        (-> entity (update :pos #(map + [dx dy] %)))
         ; there are no wp yet?
         (not wp)
         (calculate-new-path entity))))

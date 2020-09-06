@@ -1,5 +1,7 @@
 (ns hpointu.rts.core
-  (:require [hpointu.rts.utils :refer [distance]]))
+  (:require
+    [hpointu.rts.utils :refer [distance]]
+    [hpointu.rts.constants :as C]))
       
 (defmulti ->unit (fn [u] u))
 (defmulti ->building (fn [b] b))
@@ -13,26 +15,40 @@
 
 ;; TODO Probably move to game.cljc
 (def uids (atom 0))
-(defn get-uid []
-  (swap! uids inc)
-  @uids)
+(defn get-uid
+  "Return a fresh new Unique ID."
+  [] (swap! uids inc) @uids)
 
-(defn assign-uid [entity]
+(defn assign-uid
+  "Assign a new Unique ID to `entity`."
+  [entity]
   (assoc entity :uid (get-uid)))
 
-(defn filter-by-components [components]
-  (fn [record] ((apply every-pred components) record)))
+(defn filter-by-components
+  "Return a predicate that returns true if the given entity
+  has all `components`."
+  [components]
+  (fn [entity] ((apply every-pred components) entity)))
 
-(defn filter-by-system [system]
+(defn filter-by-system
+  "Return a predicate that applied to an entity, returns true
+  if the entity has all components required by the `system`."
+  [system]
   (filter-by-components (system-components system)))
 
-(defn world-width [world]
+(defn world-width
+  "Return the width of the `world`."
+  [world]
   (count (get world 0)))
 
-(defn world-height [world]
+(defn world-height
+  "Return the height of the `world`."
+  [world]
   (count world))
 
-(defn ->world [width height]
+(defn ->world
+  "Return a world enclosed by walls"
+  [width height]
   (let [full (vec (for [_ (range width)] :w))
         line (-> [:w]
                  (into (for [_ (range (- width 2))] :g))
@@ -41,16 +57,23 @@
         (into (for [_ (range (- height 2))] line))
         (conj full)))) 
 
-(defn world-cell [world x y]
+(defn world-cell
+  "Return the obstruction value in `world` at `[x y]`."
+  [world x y]
   (get-in world [y x]))
 
-(defn world-seq [world]
+(defn world-seq
+  "Enumerate [pos, val] for each cell of the world."
+  [world]
   (let [w (world-width world)
         h (world-height world)]
     (for [x (range w), y (range h)]
       [[x y] (world-cell world x y)])))
 
-(defn set-world-cells [world positions v]
+(defn set-world-cells
+  "Set the obstruction value to `v` for all `positions`
+  in the `world`."
+  [world positions v]
   (loop [w world
          [pos & more] positions]
     (let [[x y] pos]
@@ -103,25 +126,47 @@
         add-offset (fn [[ox oy]] [(+ ox x) (+ oy y)])]
     (vec (map add-offset offsets))))
 
-(defn entity-tiles [{:keys [size pos] :or {size 1}}]
+(defn entity-tiles
+  "Return the list of tiles occupied by `entity`"
+  [{:keys [size pos] :or {size 1} :as entity}]
   (tiles (mapv js/Math.round pos) size size))
 
-(defn occupies? [entity tile]
+(defn occupies?
+  "Does `entity` stands on `tile` ?"
+  [entity tile]
   (some #(= tile %) (entity-tiles entity)))
 
-(defn busy-cell? [entities pos]
+(defn busy-cell?
+  "Does any entity stands on `pos` ?"
+  [entities pos]
   (some #(occupies? % pos) entities))
 
 (defn obstacle?
-  [entities world [x y :as pos]]
-  (let [obstacles #{:w :rock :building}]
-    (or (some? (obstacles (get-in world [y x])))
-        (busy-cell? entities pos))))
+  "Is the value at [x y] in `world` considered an obstacle?"
+  [world [x y]]
+  (C/obstacles (world-cell world x y)))
 
-(defn built? [{:keys [build-time build-progress]}]
-  (= build-progress build-time))
+(defn add-entity
+  "Add an entity to the world.
+  (This will update the obstruction map that
+  the world represents)"
+  [world entity]
+  (if-let [v (:obstruction entity)]
+    (set-world-cells world (entity-tiles entity) v)
+    world))
 
-(defn get-free-zone [world pos size free-pred]
+(defn add-entities
+  "Add many entities to the world.
+  See `add-entity` for more details."
+  [world entities]
+  (if (seq entities)
+    (recur (add-entity world (first entities)) (rest entities))
+    world))
+
+(defn get-free-zone
+  "Given a `free-predicate`, return `size` world cells that are free,
+  as close as possible to `pos`."
+  [world pos size free-pred]
 
   (defn reducer [{:keys [visited zone] :as acc} n]
     (if (or (contains? visited n)

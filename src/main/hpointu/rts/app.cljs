@@ -13,6 +13,7 @@
              :refer [<!]
              :refer-macros [go]]
             [cljs.pprint]))
+            ;[taoensso.tufte :as tufte :refer-macros (defnp p profiled profile)]))
 
 (def RMAP
   {:world "img/maps/level_00.png"
@@ -21,8 +22,6 @@
 (defonce debug? (r/atom false))
 (def current-time (atom (.now js/Date)))
 (defonce state (r/atom {}))
-
-(assoc-in (:entities (deref state)) [53 :selected?] true) 
 
 ;; hack for FPS counter
 (defonce frame-counter (atom 0))
