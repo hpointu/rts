@@ -5,6 +5,20 @@
     [hpointu.rts.core :as core]
     [hpointu.rts.ux :as ux]))
 
+(def components
+  {:actors [:goals]
+   :select [:aabb :pos]
+   :draw [:pos :render-as :aabb]
+   :draw-minimap [:pos :preview]
+   :move [:pos :walk-speed]
+   :stock-update [:stock]})
+
+(defn has-components-pred
+  "Return a predicate that returns true if the given entity
+  has all components required for `system`."
+  [system]
+  (fn [entity] ((apply every-pred (components system)) entity)))
+
 ;; standard drawing shapes
 (defn ->square-shape [color size]
   {:type :rect
@@ -33,7 +47,7 @@
 (defn ->base-object [otype obj]
   (into
     {:type ::object
-     :utype otype
+     :otype otype
      :name (string/capitalize (name otype))
      :aabb [0.1 0.1 0.8 0.8]
      :obstruction :w
@@ -43,7 +57,10 @@
 (defmethod core/->object ::crystal [otype]
   (->base-object
     otype
-    {:render-item (->text "✴" "#00ffc5" 28)}))
+    {:stock 5000
+     :render-item (->text "✴" "#00ffc5" 28)
+     :rtype :crystal
+     :obstruction :crystal}))
 
 
 ;; Units
@@ -66,7 +83,8 @@
      :pv-max 20
      :available-actions [(ux/build ::house)
                          (ux/build ::farm)]
-     :render-item (->circle-shape "#0cf" 12)}))
+     :render-item (->text "♟" "#0cf" 28)
+     :collect #{::crystal}}))
 
 (defmethod core/->unit ::knight [utype]
   (->base-unit

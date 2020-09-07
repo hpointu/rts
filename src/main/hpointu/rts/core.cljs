@@ -7,7 +7,6 @@
 (defmulti ->building (fn [b] b))
 (defmulti ->object (fn [o] o))
 (defmulti act (fn [state actor-uid action dt] (first action)))
-(defmulti system-components (fn [s] s))
 (defmulti entity-subtype :type)
 (defmulti render-items :render-as)
 
@@ -23,18 +22,6 @@
   "Assign a new Unique ID to `entity`."
   [entity]
   (assoc entity :uid (get-uid)))
-
-(defn filter-by-components
-  "Return a predicate that returns true if the given entity
-  has all `components`."
-  [components]
-  (fn [entity] ((apply every-pred components) entity)))
-
-(defn filter-by-system
-  "Return a predicate that applied to an entity, returns true
-  if the entity has all components required by the `system`."
-  [system]
-  (filter-by-components (system-components system)))
 
 (defn world-width
   "Return the width of the `world`."

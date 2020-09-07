@@ -12,8 +12,8 @@
             [cljs.core.async :as a
              :refer [<!]
              :refer-macros [go]]
-            [cljs.pprint]))
-            ;[taoensso.tufte :as tufte :refer-macros (defnp p profiled profile)]))
+            [cljs.pprint]
+            [taoensso.tufte :as tufte :refer-macros (defnp p profiled profile)]))
 
 (def RMAP
   {:world "img/maps/level_00.png"
@@ -274,6 +274,7 @@
        [health-bar (:pv u) (:pv-max u)]
        [:pre {:style {:padding "0 5px"}}
         (str (:pos u) "\n")
+        (when (:stock u) (str "Stock: " (:stock u) "\n"))
         (for [g (:goals u)] (str g "\n"))]]
       
       [:div {:style {:display "flex"

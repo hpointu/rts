@@ -5,8 +5,8 @@
     [hpointu.rts.entities :as ntt]
     [hpointu.rts.path :refer [path]]
     [hpointu.rts.utils :as u]
-    [hpointu.rts.ux :as ux])
-    ;[taoensso.tufte :as tufte :refer-macros (defnp p profiled profile)])
+    [hpointu.rts.ux :as ux]
+    [taoensso.tufte :as tufte :refer-macros (defnp p profiled profile)])
   (:require-macros
     [hpointu.rts.macros
      :refer [update-entities]]))
@@ -160,11 +160,15 @@
    (filter :selected? (sort-by sort-key (vals entities)))))
 
 (defn system-entities [system {:keys [entities]}]
-  (let [filter-fn (core/filter-by-system system)]
+  (let [filter-fn (ntt/has-components-pred system)]
     (filter filter-fn (vals entities))))
 
 (defn entity-can-build [entity btype]
   (some #(= (ux/build btype) %) (:available-actions entity)))
+
+(defn entity-can-collect [entity otype]
+  (when-let [collect (:collect entity)]
+    (collect otype)))
 
 (defn get-entity [state uid]
   (get-in state [:entities uid]))
@@ -209,9 +213,9 @@
         neigh-fn (get-neigh-fn state)]
     (path from to cost-fn neigh-fn)))
 
-(defn nearest-tile-path [{:keys [world] :as state} start tiles]
-  (let [paths (map #(get-path state start %1) tiles)]
-    (first (sort-by count paths))))
+(defn nearest-tile-path [{:keys [world] :as state} end tiles]
+  (let [tile (first (sort-by #(u/distance end %) tiles))]
+    (get-path state tile end)))
 
 (defn move-selected-entities
   [{:keys [world entities mods] :as state} target]
@@ -221,13 +225,17 @@
       (core/add-goal entity [:walk (targets uid)])
       (core/set-goal entity [:walk (targets uid)])))
 
-  (let [movable? (every-pred :selected? (core/filter-by-system :move))
+  (let [movable? (every-pred :selected? (ntt/has-components-pred :move))
         to-move (filter movable? (vals entities))
         origins (map :pos to-move)
         targets (find-walk-targets state target (count to-move) origins)
         targets (into {} (map vector (map :uid to-move) targets))]
     (-> state
         (update-entities movable? set-entity-destination targets))))
+
+(defn find-closest-entity [{:keys [entities]} pos pred]
+  (first (sort-by #(u/distance pos (:pos %))
+                  (filter pred (vals entities)))))
 
 (defn update-current-goal [state actor-uid f & args]
   (update-in state [:entities actor-uid :goals 0] #(apply f % args)))
@@ -286,6 +294,35 @@
           (redraw tiles))
       state)))
 
+(defmethod core/act :deposit [state uid [_ rtype size] dt]
+  (-> state
+      (update-in [:player rtype] + size)
+      (next-goal uid)))
+
+(defmethod core/act :collect [state uid [_ ouid size timeout] dt]
+  (let [{:keys [stock rtype]} (get-in state [:entities ouid])
+        opos  (get-in state [:entities ouid :pos])
+        size (min size stock)
+        pos (get-in state [:entities uid :pos])]
+    (if (pos? timeout)
+      (update-in state [:entities uid :goals 0 3] - dt)
+      (if (pos? stock)
+        (let [hotel-pred #(= (:btype %) ::ntt/hotel)
+              hotel (find-closest-entity state pos hotel-pred)
+              htiles (core/entity-tiles hotel)
+              path (nearest-tile-path state pos htiles)]
+          (-> state
+              (update-in [:entities ouid :stock] - size)
+              (update-in [:entities uid :goals] conj
+                         [:walk (second path)]
+                         [:deposit rtype size]
+                         [:walk pos]
+                         [:collect ouid
+                          C/COLLECTION_SIZE C/COLLECTION_TIME])
+              (next-goal uid)))
+        (next-goal state uid)))))
+  
+
 (defmethod core/act :walk
   [{:keys [world entities] :as state} uid [_ target] dt]
 
@@ -335,13 +372,24 @@
 (defn contribute-to-build [entity buid]
   (update entity :goals conj [:build buid]))
 
-;; TODO: should also dispatch on mouse-mode value
+(defn collect-object [entity ouid]
+  (update entity :goals conj [:collect ouid
+                              C/COLLECTION_SIZE C/COLLECTION_TIME]))
+
 (defmethod as-target ::ntt/building [{:keys [active btype uid]} state]
   (let [can-build #(entity-can-build % btype)]
     (update-entities
       state
       (every-pred can-build :selected?)
       contribute-to-build
+      uid)))
+
+(defmethod as-target ::ntt/object [{:keys [active otype uid]} state]
+  (let [can-collect? #(entity-can-collect % otype)]
+    (update-entities
+      state
+      (every-pred can-collect? :selected?)
+      collect-object
       uid)))
 
 ;; nil mouse mode
@@ -387,17 +435,11 @@
         path (nearest-tile-path state start tiles)]
     (if (free-tiles? state tiles)
       (-> state
-          (move-selected-entities (second (reverse path)))
+          (move-selected-entities (second path))
           (update-entities :selected?
             update :goals conj [:place-building building pos])
           (dissoc :mouse-mode))
       state)))
-
-(defmethod core/system-components :actors [_] [:goals])
-(defmethod core/system-components :select [_] [:aabb :pos])
-(defmethod core/system-components :draw [_] [:pos :render-as :aabb])
-(defmethod core/system-components :draw-minimap [_] [:pos :preview])
-(defmethod core/system-components :move [_] [:pos :walk-speed])
 
 (defmethod core/entity-subtype ::ntt/unit [e] (:utype e))
 (defmethod core/entity-subtype ::ntt/building [e] (:btype e))

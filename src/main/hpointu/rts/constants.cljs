@@ -4,6 +4,9 @@
 
 (def CELL_SIZE 35)
 
+(def COLLECTION_TIME 2000)
+(def COLLECTION_SIZE 20)
+
 (def VIEW_W 18)
 (def VIEW_H 14)
 
@@ -16,4 +19,4 @@
    colour/WHITE      :rock
    colour/YELLOW     :crystal})
 
-(def obstacles #{:w :rock :building})
+(def obstacles #{:w :rock :building :crystal})

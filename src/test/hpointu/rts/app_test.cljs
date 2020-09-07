@@ -1,5 +1,6 @@
 (ns hpointu.rts.app-test
   (:require [cljs.test :refer [deftest testing are is]]
+            [hpointu.rts.entities :as ntt]
             [hpointu.rts.core :as core]
             [hpointu.rts.game :as game]
             [hpointu.rts.utils :as utils]))
@@ -103,27 +104,14 @@
     (is (= #{[1 1] [2 1] [1 2] [2 2]} (set tiles)))
     (is (= expect (core/set-world-cells world tiles :w)))))
 
-
-(deftest component-filtering
-  (let [components [:speed :goals]
-        filter-fn (core/filter-by-components components)
-        e1 {:goals [] :name "Bob"}
-        e2 {:goals [] :speed 1 :name "Arthur"}]
-    (is (= [e2]
-           (vec (filter filter-fn [e1 e2]))))
-    (is (= [e1 e2]
-           (vec (filter (core/filter-by-components [:name]) [e1 e2]))))))
-
-(defmethod core/system-components :my-sys [] [:x :y])
 (deftest system-filtering
-  (let [state {:entities {1 {:name "Bob"}
-                          2 {:x 1 :y 2 :speed 3}
-                          3 {:name "Luc" :speed 1 :x 2}
-                          4 {:name "Coco" :x nil :y nil}
-                          5 {:name "Mo" :x 1 :y 0}}}]
-    (is (= 2 (count (game/system-entities :my-sys state)))))
-  (let [state {:entities {1 {:goals []}}}]
-    (is (= 1 (count (game/system-entities :actors state))))))
+  (with-redefs [ntt/components {:my-sys [:x :y]}]
+    (let [state {:entities {1 {:name "Bob"}
+                            2 {:x 1 :y 2 :speed 3}
+                            3 {:name "Luc" :speed 1 :x 2}
+                            4 {:name "Coco" :x nil :y nil}
+                            5 {:name "Mo" :x 1 :y 0}}}]
+      (is (= 2 (count (game/system-entities :my-sys state)))))))
 
 (deftest entity-picking
   (let [state {:entities {1 {:uid 1 :aabb [0 0 1 1] :pos [3.5 4.2]}
