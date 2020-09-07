@@ -13,7 +13,7 @@ https://tedefump.gitlab.io/rts/
 - [X] Building available actions (spawn a peon for example)
 - [X] Prevent units from blocking on half-cells
 - [ ] Optimize path assignment
-- [ ] In-game resource collection
+- [X] In-game resource collection
 - [ ] Actions prerequisites (resource based and more)
 - [X] Refacto select-entities: MUCH simpler version possible
 - [ ] Right click on minimap should set destination
