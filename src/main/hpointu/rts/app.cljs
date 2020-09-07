@@ -63,7 +63,7 @@
 (defn init-state [resources]
   (-> {:world (game/img->world (:world resources))
        ;:world (core/->world 74 74)
-       :player {:crystal 500}
+       :player {:crystal 500 :gas 120}
        :camera [0 0]
        :buildings []
        :entities {}
@@ -309,21 +309,46 @@
           [:button
            {:onClick #(swap! state (fn [s] (ux/ui-action-select a s)))
             :style {:padding 10 :margin 0 :width 111}}
-           (ux/ui-action-name a)])))])
+           (ux/ui-action-name a) [:br]
+           [:span {:style {:font-size "0.6em"}}
+            (ux/ui-action-cost a)]])))])
 
-(defn inventory-bar [player-stats]
+(defn inventory-bar [state]
   [:div {:style {:display :flex}}
    [:div {:style {:flex-grow 1}}
     [:h3 {:style {:padding 10 :margin 0}} "Player informations"]]
-   [:div {:style {:width 80
-                  :color  "#00ffc5"}}
+   [:div {:style {:width 220}}
     [:span {:style {}}
      [:span {:style {:vertical-align "middle"
                      :height 0
+                     :margin-right 20
+                     :color  "#00ffc5"
                      :font-size 30}}
-      "✴" [:span {:style {:font-size 16
-                          :margin-left 5
-                          :vertical-align "middle"}} (:crystal player-stats)]]]]])
+      [:span {:class "icon"} "✴"]
+      [:span {:style {:font-size 16
+                      :margin-left 5
+                      :vertical-align "middle"}}
+       (core/player-resource state :crystal)]]
+     [:span {:style {:vertical-align "middle"
+                     :height 0
+                     :margin-right 20
+                     :color  "#e87a0c"
+                     :font-size 30}}
+      [:span {:class "icon"} "♨"]
+      [:span {:style {:font-size 16
+                      :margin-left 5
+                      :vertical-align "middle"}}
+       (core/player-resource state :gas)]]
+     [:span {:style {:vertical-align "middle"
+                     :height 0
+                     :color  "#5cc500"
+                     :font-size 22}}
+      [:span {:class "icon"} (gstring/unescapeEntities "🏠")]
+      [:span {:style {:font-size 16
+                      :margin-left 5
+                      :vertical-align "middle"}}
+         (core/player-resource state :gas)]]]]])
+
    
 (defn rts-app [props]
   [:div {:style {:color "white"
@@ -331,7 +356,7 @@
    [:div {:style {:margin "0 0 5px 0"
                   :width 840
                   :background-color "black"}}
-    [inventory-bar (:player @state)]]
+    [inventory-bar @state]]
 
    [:div {:style {:display "flex"}}
      [:div {:style {:width 223

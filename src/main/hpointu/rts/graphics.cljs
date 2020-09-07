@@ -5,11 +5,12 @@
 (defmulti render-item! (fn [ctx item] (:type item)))
 
 (defmethod render-item! :text render-text
-  [ctx {:keys [x y color value size] :as item}]
+  [ctx {:keys [x y color value size font] :as item
+        :or {font "\"Courier New\", Courier, monospace"}}]
   (doto ctx
     (aset "fillStyle" color)
     (aset
-      "font" (str size "px \"Courier New\", Courier, monospace"))
+      "font" (str size "px/1em " font))
     (aset "textBaseline" "middle")
     (aset "textAlign" "center")
     (.fillText value x y)))

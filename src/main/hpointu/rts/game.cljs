@@ -59,6 +59,17 @@
 
 (defn cell-redraw [[x y]] [:cell x y])
 
+(defn pay-cost [state [tip & more]]
+  (if tip
+    (recur (core/spend-resource state (first tip) (second tip))
+           more)
+    state))
+
+(defn can-afford? [state cost]
+  (every?
+    (fn [[rtype c]] (<= c (core/player-resource state rtype)))
+    cost))
+
 (defn free-tiles?
   ([state tiles free-tiles]
    (let [ignore (fn [cell] (some #(= % cell) free-tiles))
@@ -287,6 +298,7 @@
         can? (free-tiles? state tiles)]
     (if can?
       (-> state
+          (pay-cost (:cost building {}))
           (update :entities assoc (:uid building) building)
           (update :world #(core/set-world-cells % tiles :building))
           (update-in [:entities uid :goals] (comp vec rest))
@@ -421,6 +433,12 @@
        (dissoc :selector))))
 
 ;; build mouse mode
+(defmethod ux/ui-action-cost ::ux/spawn [[_ btype]]
+  (:cost (core/->unit btype) {}))
+
+(defmethod ux/ui-action-cost ::ux/build [[_ btype]]
+  (:cost (core/->building btype) {}))
+
 (defmethod ux/right-click-start ::ux/build [_ state pos] state)
 (defmethod ux/right-click-end ::ux/build [_ state _] state)
 (defmethod ux/drag ::ux/build [_ {:keys [selector] :as state} pos] state)
@@ -445,9 +463,24 @@
 (defmethod core/entity-subtype ::ntt/building [e] (:btype e))
 (defmethod core/entity-subtype ::ntt/object [e] (:otype e))
 
+(defmethod core/player-resource :default [state res-type]
+  (get-in state [:player res-type]))
+
+(defmethod core/spend-resource :default [state res-type amount]
+  (let [amount (min amount (get-in state [:player res-type]))]
+    (update-in state [:player res-type] - amount)))
+
 (defmethod ux/ui-action-select ::ux/build [action state]
-  (assoc state :mouse-mode action))
+  (let [cost (ux/ui-action-cost action)]
+    (if (can-afford? state cost)
+      (assoc state :mouse-mode action)
+      state)))
 
 (defmethod ux/ui-action-select ::ux/spawn [action state]
-  (let [action [:spawn ::ntt/peon 0 1000]]
-    (update-entities state :selected? update :goals conj action)))
+  (let [action [:spawn ::ntt/peon 0 1000]
+        cost (:cost (core/->unit ::ntt/peon) {})]
+    (if (can-afford? state cost)
+      (-> state
+          (pay-cost cost)
+          (update-entities :selected? update :goals conj action))
+      state)))

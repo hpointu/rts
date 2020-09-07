@@ -1,0 +1,13 @@
+/*
+EmojiSymbols Font (c)blockworks - Kenichi Kaneko
+http://emojisymbols.com/
+*/
+@font-face {
+  font-family: 'EmojiSymbols';
+  src: url('/font/EmojiSymbols-Regular.woff') format('woff');
+  font-style: normal;
+  text-decoration: none;
+}
+
+.text { font-family: "Courier New", Courier, monospace }
+.icon { font-family: "EmojiSymbols"; font-size: 22px; line-height: 1 }

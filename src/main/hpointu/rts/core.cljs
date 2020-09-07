@@ -9,6 +9,8 @@
 (defmulti act (fn [state actor-uid action dt] (first action)))
 (defmulti entity-subtype :type)
 (defmulti render-items :render-as)
+(defmulti player-resource (fn [state res-type] res-type))
+(defmulti spend-resource (fn [state res-type _] res-type))
 
 (defmethod act :default [s _ a _] (println a "default action") s)
 

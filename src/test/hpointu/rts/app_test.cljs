@@ -124,3 +124,8 @@
   (let [world [[:w :w :p1 :w]]]
     (is (= :hpointu.rts.entities/hotel (:btype (first (game/world->entities world)))))
     (is (= 1 (count (game/world->entities world))))))
+
+(deftest resources
+  (let [s {:player {:crystal 200 :stone 400 :gold 10}}]
+    (is (game/can-afford? s {:crystal 20 :gold 10}))
+    (is (not (game/can-afford? s {:gold 40})))))

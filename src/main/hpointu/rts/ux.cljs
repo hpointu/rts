@@ -4,6 +4,9 @@
 (defmulti ui-action-name (fn [action] (first action)))
 (defmethod ui-action-name :default [a] (name (second a)))
 
+(defmulti ui-action-cost (fn [action] (first action)))
+(defmethod ui-action-cost :default [a] {})
+
 (defmulti ui-action-select (fn [action state] (first action)))
 (defmethod ui-action-select :default [a s] s)
 

@@ -43,6 +43,12 @@
    :x (/ C/CELL_SIZE 2)
    :y (/ C/CELL_SIZE 2)})
 
+(defn ->icon [c color size offset]
+  (into
+    (->text c color size)
+    {:y offset
+     :font "EmojiSymbols"}))
+
 ;; Static objects
 (defn ->base-object [otype obj]
   (into
@@ -79,6 +85,7 @@
   (->base-unit
     utype
     {:walk-speed 3
+     :cost {:crystal 50}
      :pv 20
      :pv-max 20
      :available-actions [(ux/build ::house)
@@ -115,6 +122,7 @@
     btype
     {:pv-max 50
      :pv 50
+     :cost {:crystal 250}
      :build-time 10000
      :label "Farm"
      :label-size 14
@@ -125,6 +133,7 @@
     btype
     {:pv-max 50
      :pv 50
+     :cost {:crystal 150}
      :build-time 7500
      :label "House"
      :label-size 10
@@ -135,6 +144,7 @@
     btype
     {:pv-max 80
      :pv 80
+     :cost {:crystal 1200}
      :available-actions [(ux/spawn ::peon)]
      :build-time 15000
      :label "Hotel"
