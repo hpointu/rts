@@ -14,6 +14,11 @@
 (defmulti as-target (fn [entity state] (:type entity)))
 (defmethod as-target :default [_ state] state)
 
+(defmulti production-progress first)
+(defmethod production-progress :default
+  [[_ _ progress total]]
+  (/ progress total))
+
 (defn img->world [img]
   (let 
     [tile #(C/TILES % :grass)
@@ -174,21 +179,61 @@
   (let [filter-fn (ntt/has-components-pred system)]
     (filter filter-fn (vals entities))))
 
-(defn entity-can-build [entity btype]
+(defn entity-can-build
+  "Does `entity` have the ability to build `btype` buildings?"
+  [entity btype]
   (some #(= (ux/build btype) %) (:available-actions entity)))
 
-(defn entity-can-collect [entity otype]
+(defn entity-can-collect
+  "Does `entity` have the ability to collect object of type `otype`?"
+  [entity otype]
   (when-let [collect (:collect entity)]
     (collect otype)))
 
-(defn get-entity [state uid]
+(defn get-entity
+  "Query entity by `uid`."
+  [state uid]
   (get-in state [:entities uid]))
 
-(defn update-entity [state uid func & args]
+(defn update-entity
+  "Call func to entity identified with `uid` supplied as the first
+  argument, and append the rest of the arguments."
+  [state uid func & args]
   (update-in state [:entities uid] #(apply func % args)))
 
-(defn clear-selection [state]
+(defn clear-selection
+  "Deselect all selected entities"
+  [state]
   (update-entities state :selected? assoc :selected? false))
+
+(defn enqueued-entities
+  "Return the list of entity types enqueued to be produced."
+  [{:keys [entities]}]
+  (map
+    second
+    (filter #(= :spawn (first %)) (mapcat :goals (vals entities)))))
+
+(defn available-housing
+  "Return the number of available slots for units."
+  [{:keys [entities]}]
+  (apply + (map :housing (vals entities))))
+
+(defn housing-consumption
+  "Return the amount of houses currently required.
+  Note that this includes enqueued units."
+  [{:keys [entities] :as state}]
+  (letfn [(h-req [e] (get-in e [:cost :housing]))]
+    (apply +
+      (concat
+        (map h-req (vals entities))
+        (map (comp h-req core/->entity) (enqueued-entities state))))))
+
+(defn production-list
+  "Get the list of entities being produced by `entity`."
+  [entity]
+  (let [production-type #{:spawn}
+        is-production? #(production-type (first %))]
+    (filter is-production? (:goals entity))))
 
 (defn select-entities
   ([state select-entity-pred]
@@ -271,7 +316,7 @@
     (let [pos (:pos (get-entity state uid))
           to (first (find-walk-targets state pos 1 []))]
       (-> state
-          (add-entity to #(core/->unit utype))
+          (add-entity to #(core/->entity utype))
           (next-goal uid)))))
 
 (defmethod core/act :build [state uid [_ buid] dt]
@@ -291,7 +336,7 @@
 
 (defmethod core/act :place-building [state uid [_ btype pos] dt]
   (let [buid (core/get-uid)
-        building (assoc (core/->building btype)
+        building (assoc (core/->entity btype)
                         :uid buid
                         :pos pos)
         tiles (core/entity-tiles building)
@@ -380,7 +425,6 @@
     (update-in state [:entities uid] move-entity)
     (update-in state [:entities uid :goals] (comp vec rest))))
 
-
 (defn contribute-to-build [entity buid]
   (update entity :goals conj [:build buid]))
 
@@ -434,10 +478,10 @@
 
 ;; build mouse mode
 (defmethod ux/ui-action-cost ::ux/spawn [[_ btype]]
-  (:cost (core/->unit btype) {}))
+  (:cost (core/->entity btype) {}))
 
 (defmethod ux/ui-action-cost ::ux/build [[_ btype]]
-  (:cost (core/->building btype) {}))
+  (:cost (core/->entity btype) {}))
 
 (defmethod ux/right-click-start ::ux/build [_ state pos] state)
 (defmethod ux/right-click-end ::ux/build [_ state _] state)
@@ -448,7 +492,7 @@
   (let [entity (first (get-selected-entities state))
         start ((comp #(map int %) :pos) entity)
         pos (map int pos)
-        tmp (assoc (core/->building building) :pos pos)
+        tmp (assoc (core/->entity building) :pos pos)
         tiles (core/entity-tiles tmp)
         path (nearest-tile-path state start tiles)]
     (if (free-tiles? state tiles)
@@ -466,6 +510,9 @@
 (defmethod core/player-resource :default [state res-type]
   (get-in state [:player res-type]))
 
+(defmethod core/player-resource :housing [state _]
+  (- (available-housing state) (housing-consumption state)))
+
 (defmethod core/spend-resource :default [state res-type amount]
   (let [amount (min amount (get-in state [:player res-type]))]
     (update-in state [:player res-type] - amount)))
@@ -476,11 +523,12 @@
       (assoc state :mouse-mode action)
       state)))
 
-(defmethod ux/ui-action-select ::ux/spawn [action state]
-  (let [action [:spawn ::ntt/peon 0 1000]
-        cost (:cost (core/->unit ::ntt/peon) {})]
+(defmethod ux/ui-action-select ::ux/spawn [[_ utype] state]
+  (let [{:keys [cost build-time]
+         :or {cost {} build-time 0}} (core/->entity utype)
+        spawn [:spawn utype 0 build-time]]
     (if (can-afford? state cost)
       (-> state
           (pay-cost cost)
-          (update-entities :selected? update :goals conj action))
+          (update-entities :selected? update :goals conj spawn))
       state)))

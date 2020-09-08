@@ -3,9 +3,7 @@
     [hpointu.rts.utils :refer [distance]]
     [hpointu.rts.constants :as C]))
       
-(defmulti ->unit (fn [u] u))
-(defmulti ->building (fn [b] b))
-(defmulti ->object (fn [o] o))
+(defmulti ->entity (fn [u] u))
 (defmulti act (fn [state actor-uid action dt] (first action)))
 (defmulti entity-subtype :type)
 (defmulti render-items :render-as)
@@ -67,6 +65,7 @@
          [pos & more] positions]
     (let [[x y] pos]
       (if pos (recur (assoc-in w [y x] v) more) w))))
+
 
 (defn entity-moving? [{:keys [waypoints]}] (seq waypoints))
 

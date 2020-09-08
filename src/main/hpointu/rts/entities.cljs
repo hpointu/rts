@@ -60,7 +60,7 @@
      :render-as ::unit}
     obj))
 
-(defmethod core/->object ::crystal [otype]
+(defmethod core/->entity ::crystal [otype]
   (->base-object
     otype
     {:stock 5000
@@ -81,11 +81,13 @@
      :waypoints []}
     unit))
 
-(defmethod core/->unit ::peon [utype]
+(defmethod core/->entity ::peon [utype]
   (->base-unit
     utype
-    {:walk-speed 3
-     :cost {:crystal 50}
+    {:walk-speed 2
+     :icon "♟"
+     :cost {:crystal 50 :housing 1}
+     :build-time 2000
      :pv 20
      :pv-max 20
      :available-actions [(ux/build ::house)
@@ -93,11 +95,12 @@
      :render-item (->text "♟" "#0cf" 28)
      :collect #{::crystal}}))
 
-(defmethod core/->unit ::knight [utype]
+(defmethod core/->entity ::knight [utype]
   (->base-unit
     utype
     {:walk-speed 5
      :pv 200
+     :cost {:crystal 200 :housing 2}
      :pv-max 200
      :available-actions [(ux/build ::hotel)]
      :render-item (->square-shape "#0cf" 22)}))
@@ -117,7 +120,7 @@
 
       building)))
 
-(defmethod core/->building ::farm [btype]
+(defmethod core/->entity ::farm [btype]
   (->base-building
     btype
     {:pv-max 50
@@ -128,22 +131,24 @@
      :label-size 14
      :size 2}))
 
-(defmethod core/->building ::house [btype]
+(defmethod core/->entity ::house [btype]
   (->base-building
     btype
     {:pv-max 50
      :pv 50
+     :housing 1
      :cost {:crystal 150}
      :build-time 7500
      :label "House"
      :label-size 10
      :size 1}))
 
-(defmethod core/->building ::hotel [btype]
+(defmethod core/->entity ::hotel [btype]
   (->base-building
     btype
     {:pv-max 80
      :pv 80
+     :housing 4
      :cost {:crystal 1200}
      :available-actions [(ux/spawn ::peon)]
      :build-time 15000
@@ -152,8 +157,8 @@
      :size 3}))
 
 (def cell-spawn
-  {:p1         #(assoc (core/->building ::hotel) :active true)
-   :p2         #(assoc (core/->building ::hotel) :active true)
-   :p3         #(assoc (core/->building ::hotel) :active true)
-   :p4         #(assoc (core/->building ::hotel) :active true)
-   :crystal    #(core/->object ::crystal)})
+  {:p1         #(assoc (core/->entity ::hotel) :active true)
+   :p2         #(assoc (core/->entity ::hotel) :active true)
+   :p3         #(assoc (core/->entity ::hotel) :active true)
+   :p4         #(assoc (core/->entity ::hotel) :active true)
+   :crystal    #(core/->entity ::crystal)})

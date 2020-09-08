@@ -76,7 +76,7 @@
 (defmethod ux/draw-hover! ::ux/build
   [[_ btype] ctx {:keys [hover world] :as state}]
   (when hover
-    (let [size (:size (core/->building btype))
+    (let [size (:size (core/->entity btype))
           tiles (core/tiles hover size size)
           text (first (name btype))
           can? (game/free-tiles? state tiles)

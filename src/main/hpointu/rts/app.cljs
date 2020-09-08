@@ -29,41 +29,21 @@
 
 (def SIZE 35)
 
-(defn- ->unit
+(defn- ->entity
   ([utype x y]
-   (into (core/->unit utype)
+   (into (core/->entity utype)
          {:uid (core/get-uid)
           :pos [x y]}))
   ([utype x y pv]
-   (into (core/->unit utype)
+   (into (core/->entity utype)
          {:uid (core/get-uid)
           :pv pv
           :pos [x y]})))
 
-(defn init-entities []
-  [(->unit :knight 3 4)
-   (->unit :peon 4 4)
-   (->unit :peon 5 3)
-   (->unit :knight 5 4 45)
-   (->unit :peon 6 3)
-   (->unit :peon 6 5 14)
-   (->unit :knight 6 6)
-   (->unit :knight 6 8 120)
-   (->unit :knight 7 4)
-   (->unit :peon 7 5)
-   (->unit :peon 7 6)
-   (->unit :peon 7 8 3)
-   (->unit :peon 8 5)
-   (->unit :knight 8 8 88)
-   (->unit :peon 8 9)
-   (->unit :knight 9 5)
-   (->unit :peon 9 8)])
-  
-
 (defn init-state [resources]
   (-> {:world (game/img->world (:world resources))
        ;:world (core/->world 74 74)
-       :player {:crystal 500 :gas 120}
+       :player {:crystal 250 :gas 0}
        :camera [0 0]
        :buildings []
        :entities {}
@@ -262,9 +242,36 @@
                   :width (str (percent pv pv-max) "%")}}
     (gstring/unescapeEntities "&nbsp;")]])
 
+(defn production-list [[current & more]]
+  (when current
+    (let [progress (game/production-progress current)
+          tmp (core/->entity (second current))]
+      [:div {:style {:background-color "#000"
+                     :display "flex"
+                     :align-items "center"
+                     :border "1px solid #888"
+                     :margin 5}}
+       [:div {:style {:font-size 24
+                      :border-right "1px solid #888"
+                      :color "#0cf"
+                      :line-height 1.1
+                      :margin 0
+                      :padding "0 5px"}}
+        (:icon tmp)]
+       [:div {:style {:background-color "#111"
+                      :display "flex"
+                      :flex-grow 1
+                      :align-items "stretch"
+                      :margin 5
+                      :font-size 4}}
+        [:div {:style {:background-color "#e87a0c"
+                       :width (str (* 100 progress) "%")}}
+         (gstring/unescapeEntities "&nbsp;")]]])))
+
 (defn profile-box [[u & more :as entities]]
   [:div {:style {:margin-top 5 :background-color "#111"
                  :max-width 222
+                 :max-height 150
                  :border "1px solid #888"
                  :flex-grow 1}}
     (if (and u (not more))
@@ -272,8 +279,9 @@
        [:h5 {:style {:padding-left 5 :margin 0 :margin-top 5}}
         (str (:name u) " - " (:uid u))]
        [health-bar (:pv u) (:pv-max u)]
+       [production-list (game/production-list u)]
        [:pre {:style {:padding "0 5px"}}
-        (str (:pos u) "\n")
+        (str "Pos: " (:pos u) "\n")
         (when (:stock u) (str "Stock: " (:stock u) "\n"))
         (for [g (:goals u)] (str g "\n"))]]
       
@@ -317,7 +325,7 @@
   [:div {:style {:display :flex}}
    [:div {:style {:flex-grow 1}}
     [:h3 {:style {:padding 10 :margin 0}} "Player informations"]]
-   [:div {:style {:width 220}}
+   [:div {:style {:width 240}}
     [:span {:style {}}
      [:span {:style {:vertical-align "middle"
                      :height 0
@@ -339,17 +347,19 @@
                       :margin-left 5
                       :vertical-align "middle"}}
        (core/player-resource state :gas)]]
-     [:span {:style {:vertical-align "middle"
-                     :height 0
-                     :color  "#5cc500"
-                     :font-size 22}}
-      [:span {:class "icon"} (gstring/unescapeEntities "🏠")]
-      [:span {:style {:font-size 16
-                      :margin-left 5
-                      :vertical-align "middle"}}
-         (core/player-resource state :gas)]]]]])
+     (let [houses (game/available-housing state)
+           taken (game/housing-consumption state)
+           free (- houses taken)]
+       [:span {:style {:vertical-align "middle"
+                       :height 0
+                       :color (if (>= free 0) "#5cc500" "red")
+                       :font-size 22}}
+        [:span {:class "icon"} (gstring/unescapeEntities "🏠")]
+        [:span {:style {:font-size 16
+                        :margin-left 5
+                        :vertical-align "middle"}}
+           taken "/" houses]])]]])
 
-   
 (defn rts-app [props]
   [:div {:style {:color "white"
                  :font-family "\"Courier New\", Courier, monospace"}}
@@ -393,7 +403,6 @@
             "Press , to debug state"))]])
 
 ; -- End UI --- >8 --
-
 (defn tick! [contexts]
   (let [t (.now js/Date)
         dt (- t @current-time)
