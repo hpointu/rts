@@ -324,7 +324,7 @@
 (defn inventory-bar [state]
   [:div {:style {:display :flex}}
    [:div {:style {:flex-grow 1}}
-    [:h3 {:style {:padding 10 :margin 0}} "Player informations"]]
+    [:h3 {:style {:padding 10 :margin 0 :font-size "0.9em"}} "Player informations"]]
    [:div {:style {:width 240}}
     [:span {:style {}}
      [:span {:style {:vertical-align "middle"
@@ -361,8 +361,7 @@
            taken "/" houses]])]]])
 
 (defn rts-app [props]
-  [:div {:style {:color "white"
-                 :font-family "\"Courier New\", Courier, monospace"}}
+  [:div {:style {:color "white"}}
    [:div {:style {:margin "0 0 5px 0"
                   :width 840
                   :background-color "black"}}

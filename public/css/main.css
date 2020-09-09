@@ -9,5 +9,16 @@ http://emojisymbols.com/
   text-decoration: none;
 }
 
+@font-face {
+	font-family: 'RTSMono';
+	src: url('../font/DejaVuSansMono.ttf') format('truetype');
+	font-style: normal;
+	text-decoration: none;
+}
+
 .text { font-family: "Courier New", Courier, monospace }
 .icon { font-family: "EmojiSymbols"; font-size: 22px; line-height: 1 }
+
+body { font-family: "RTSMono"; }
+pre { font-family: "RTSMono"; font-size: 12px;}
+h1, h2, h3, h4 { font-family: "RTSMono"; }

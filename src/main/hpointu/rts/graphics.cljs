@@ -6,7 +6,7 @@
 
 (defmethod render-item! :text render-text
   [ctx {:keys [x y color value size font] :as item
-        :or {font "\"Courier New\", Courier, monospace"}}]
+        :or {font "RTSMono"}}]
   (doto ctx
     (aset "fillStyle" color)
     (aset
